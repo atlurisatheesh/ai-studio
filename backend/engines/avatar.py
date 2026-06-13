@@ -4,10 +4,13 @@ Pipeline per job:
   1. Synthesize the script with the local TTS engine (cloned voice supported).
   2. Lip-sync the user's uploaded portrait photo to that audio using a
      locally installed engine:
-        sadtalker — github.com/OpenTalker/SadTalker (one photo → talking head)
-        musetalk  — github.com/TMElyralab/MuseTalk (higher fidelity, video input)
-     Both are driven as subprocesses inside their own checkout/venv so their
-     heavy dependency stacks stay isolated from this app.
+        sadtalker   — github.com/OpenTalker/SadTalker (one photo → talking head, ~8GB VRAM)
+        musetalk    — github.com/TMElyralab/MuseTalk  (higher fidelity, ~12GB VRAM)
+        echomimic   — github.com/BadToBest/EchoMimic  (audio-driven, near-photorealistic, ~16GB VRAM)
+        liveportrait— github.com/KwaiVision/LivePortrait (video-driven reenactment, ~8GB VRAM;
+                       requires --driving_audio support in your installation, e.g. FurkanGozukara fork)
+     All engines are driven as subprocesses inside their own checkout/venv
+     so their heavy dependency stacks stay isolated from this app.
   3. If AVATAR_ENGINE=none, the job completes as a "preview": portrait +
      narrated audio, no motion. The product still works on CPU-only hosts.
 
@@ -19,19 +22,28 @@ import uuid
 from pathlib import Path
 
 from core.config import (AVATAR_ENGINE, SADTALKER_DIR, MUSETALK_DIR,
+                         ECHOMIMIC_DIR, LIVEPORTRAIT_DIR,
                          AVATAR_PYTHON, OUTPUT_DIR, logger)
 from core.db import get_db
 from core.security import now_iso, save_project
 from engines import tts
 
+_ENGINE_DIRS = {
+    "sadtalker": SADTALKER_DIR,
+    "musetalk": MUSETALK_DIR,
+    "echomimic": ECHOMIMIC_DIR,
+    "liveportrait": LIVEPORTRAIT_DIR,
+}
+
 
 def status() -> dict:
-    engine_dir = {"sadtalker": SADTALKER_DIR, "musetalk": MUSETALK_DIR}.get(AVATAR_ENGINE, "")
+    engine_dir = _ENGINE_DIRS.get(AVATAR_ENGINE, "")
     return {
         "engine": AVATAR_ENGINE,
         "engine_dir": engine_dir,
         "engine_ready": AVATAR_ENGINE != "none" and bool(engine_dir) and Path(engine_dir).exists(),
         "mode": "lipsync" if AVATAR_ENGINE != "none" else "preview",
+        "available_engines": [k for k, v in _ENGINE_DIRS.items() if v and Path(v).exists()],
     }
 
 
@@ -73,6 +85,54 @@ def _run_musetalk(image_path: str, audio_path: str, work_dir: Path) -> Path:
     return results[-1]
 
 
+def _run_echomimic(image_path: str, audio_path: str, work_dir: Path) -> Path:
+    """EchoMimic: audio-driven, near-photorealistic lipsync (~16GB VRAM).
+
+    Install: git clone https://github.com/BadToBest/EchoMimic
+    Set ECHOMIMIC_DIR to the checkout path and AVATAR_ENGINE=echomimic.
+    """
+    import subprocess
+    cmd = [
+        AVATAR_PYTHON, "-m", "scripts.inference_audio2vid",
+        "--driving_audio", audio_path,
+        "--ref_img", image_path,
+        "--output_dir", str(work_dir),
+        "--width", "512",
+        "--height", "512",
+    ]
+    subprocess.run(cmd, cwd=ECHOMIMIC_DIR, check=True, capture_output=True, timeout=1800)
+    results = sorted(work_dir.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
+    if not results:
+        raise RuntimeError("EchoMimic produced no video")
+    return results[-1]
+
+
+def _run_liveportrait(image_path: str, audio_path: str, work_dir: Path) -> Path:
+    """LivePortrait: high-fidelity face reenactment with audio driving.
+
+    Requires a LivePortrait fork that supports --driving_audio, e.g.:
+      github.com/FurkanGozukara/LivePortrait  (adds audio mode to KwaiVision base)
+    Set LIVEPORTRAIT_DIR to the checkout path and AVATAR_ENGINE=liveportrait.
+
+    If your installation only supports video-driven mode, set
+    AVATAR_ENGINE=sadtalker or musetalk instead and use LivePortrait
+    as a post-processing enhancer in a two-step pipeline.
+    """
+    import subprocess
+    cmd = [
+        AVATAR_PYTHON, "inference.py",
+        "--source_image", image_path,
+        "--driving_audio", audio_path,
+        "--result_dir", str(work_dir),
+        "--still",
+    ]
+    subprocess.run(cmd, cwd=LIVEPORTRAIT_DIR, check=True, capture_output=True, timeout=1800)
+    results = sorted(work_dir.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
+    if not results:
+        raise RuntimeError("LivePortrait produced no video")
+    return results[-1]
+
+
 async def run_job(job_id: str, user_id: str, script: str, voice: str,
                   image_path: str, clone_sample: str | None):
     await _set(job_id, status="processing", started_at=now_iso())
@@ -83,10 +143,16 @@ async def run_job(job_id: str, user_id: str, script: str, voice: str,
         audio_file.write_bytes(audio_bytes)
 
         # 2. lipsync (or preview)
-        if AVATAR_ENGINE in ("sadtalker", "musetalk") and status()["engine_ready"]:
+        _runners = {
+            "sadtalker": _run_sadtalker,
+            "musetalk": _run_musetalk,
+            "echomimic": _run_echomimic,
+            "liveportrait": _run_liveportrait,
+        }
+        if AVATAR_ENGINE in _runners and status()["engine_ready"]:
             work_dir = OUTPUT_DIR / f"avatar_work_{job_id}"
             work_dir.mkdir(exist_ok=True)
-            runner = _run_sadtalker if AVATAR_ENGINE == "sadtalker" else _run_musetalk
+            runner = _runners[AVATAR_ENGINE]
             video = await asyncio.to_thread(runner, image_path, str(audio_file), work_dir)
             final_name = f"avatar_{job_id}.mp4"
             shutil.copy(video, OUTPUT_DIR / final_name)

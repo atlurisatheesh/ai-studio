@@ -1,7 +1,9 @@
 """Voice router: TTS, transcription, real voice cloning — all local."""
 import base64
+import json
 import uuid
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from core.config import UPLOAD_DIR, logger
@@ -62,6 +64,39 @@ async def voice_tts(req: TTSRequest, user: CurrentUser):
                                  {"voice": req.voice, "engine": tts.BACKEND,
                                   "text": req.text, "audio_base64": audio_b64})
     return {"audio_base64": audio_b64, "format": "wav", "project": project}
+
+
+@router.post("/tts/stream")
+async def voice_tts_stream(req: TTSRequest, user: CurrentUser):
+    """SSE endpoint: yields one WAV chunk per sentence for low-latency playback.
+
+    Use with fetch() + ReadableStream — EventSource is GET-only and can't
+    carry a JSON body. Each event: data: {"chunk": "<base64>", "index": N}\n\n
+    Final event: data: {"done": true, "total": N}\n\n
+    """
+    clone_sample = await _resolve_clone(req.voice, user["id"])
+
+    async def event_stream():
+        idx = 0
+        try:
+            async for wav in tts.synthesize_stream(req.text, voice=req.voice,
+                                                    speed=req.speed,
+                                                    clone_sample=clone_sample):
+                payload = json.dumps({"chunk": base64.b64encode(wav).decode(), "index": idx})
+                yield f"data: {payload}\n\n"
+                idx += 1
+            yield f"data: {json.dumps({'done': True, 'total': idx})}\n\n"
+        except RuntimeError as e:
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+        except Exception as e:
+            logger.exception("TTS stream error")
+            yield f"data: {json.dumps({'error': f'TTS generation failed: {e}', 'done': True})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/transcribe")

@@ -26,6 +26,11 @@ def mock_engines(monkeypatch):
     async def fake_synthesize(text, voice="studio", speed=1.0, clone_sample=None):
         return FAKE_WAV
 
+    async def fake_synthesize_stream(text, voice="studio", speed=1.0, clone_sample=None):
+        # Yield two chunks to simulate sentence streaming
+        yield FAKE_WAV
+        yield FAKE_WAV
+
     async def fake_transcribe(path):
         return {"text": "hello world", "language": "en", "language_probability": 0.99,
                 "duration": 1.0, "segments": []}
@@ -37,6 +42,7 @@ def mock_engines(monkeypatch):
         return "mocked output"
 
     monkeypatch.setattr(tts, "synthesize", fake_synthesize)
+    monkeypatch.setattr(tts, "synthesize_stream", fake_synthesize_stream)
     monkeypatch.setattr(stt, "transcribe", fake_transcribe)
     monkeypatch.setattr(llm, "chat", fake_chat)
     monkeypatch.setattr(llm, "complete", fake_complete)
@@ -190,6 +196,29 @@ def test_projects_crud(client, auth_headers):
 
     only_tts = client.get("/api/projects?kind=tts", headers=auth_headers).json()
     assert all(p["kind"] == "tts" for p in only_tts)
+
+
+def test_tts_stream(client, auth_headers):
+    r = client.post("/api/voice/tts/stream",
+                    json={"text": "Hello world. This is a streaming test.", "voice": "studio"},
+                    headers=auth_headers)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/event-stream")
+    # Parse SSE events from the response body
+    import base64, json as _json
+    events = []
+    for line in r.text.split("\n\n"):
+        line = line.strip()
+        if line.startswith("data: "):
+            events.append(_json.loads(line[6:]))
+    chunks = [e for e in events if "chunk" in e]
+    done_events = [e for e in events if e.get("done")]
+    assert len(chunks) == 2, f"Expected 2 chunks, got {chunks}"
+    assert done_events, "No done event received"
+    # Each chunk must be valid base64-encoded WAV
+    for ev in chunks:
+        decoded = base64.b64decode(ev["chunk"])
+        assert decoded[:4] == b"RIFF"
 
 
 def test_asset_path_traversal_blocked(client):

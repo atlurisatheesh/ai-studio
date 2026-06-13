@@ -36,14 +36,27 @@ cat <<'EOF'
        pip install chatterbox-tts
        # then set TTS_ENGINE=chatterbox in .env
 
-   SadTalker (talking-head lipsync from one photo):
+   SadTalker (talking-head lipsync from one photo, ~8GB VRAM):
        git clone https://github.com/OpenTalker/SadTalker
        cd SadTalker && pip install -r requirements.txt && bash scripts/download_models.sh
        # then set AVATAR_ENGINE=sadtalker and SADTALKER_DIR=/path/to/SadTalker in .env
 
-   MuseTalk (higher-fidelity lipsync alternative):
+   MuseTalk (higher-fidelity lipsync, ~12GB VRAM):
        https://github.com/TMElyralab/MuseTalk
-       # then set AVATAR_ENGINE=musetalk and MUSETALK_DIR=/path/to/MuseTalk
+       # then set AVATAR_ENGINE=musetalk and MUSETALK_DIR=/path/to/MuseTalk in .env
+
+   EchoMimic (near-photorealistic audio-driven lipsync, ~16GB VRAM) [RECOMMENDED on high-end GPU]:
+       git clone https://github.com/BadToBest/EchoMimic
+       cd EchoMimic && pip install -r requirements.txt
+       # download checkpoints per its README
+       # then set AVATAR_ENGINE=echomimic and ECHOMIMIC_DIR=/path/to/EchoMimic in .env
+
+   LivePortrait (high-fidelity face reenactment with audio, ~8GB VRAM):
+       # Use the fork that adds --driving_audio support:
+       git clone https://github.com/FurkanGozukara/LivePortrait
+       cd LivePortrait && pip install -r requirements.txt
+       # download checkpoints per its README
+       # then set AVATAR_ENGINE=liveportrait and LIVEPORTRAIT_DIR=/path/to/LivePortrait in .env
 EOF
 
 echo "Done."

@@ -12,9 +12,14 @@ Two interchangeable backends:
 The active backend is chosen by TTS_ENGINE (auto picks chatterbox when
 importable, else piper). Voice ids starting with "cv_" refer to a user's
 cloned voice and resolve to its reference sample.
+
+synthesize_stream() yields a complete WAV per sentence so the caller can
+start playing audio ~300ms after the first sentence instead of waiting
+for the full clip.
 """
 import asyncio
 import io
+import re
 import wave
 from pathlib import Path
 
@@ -169,3 +174,38 @@ async def synthesize(text: str, voice: str = "studio", speed: float = 1.0,
     """Synthesize speech, returning WAV bytes. Runs in a worker thread."""
     sample = str(clone_sample) if clone_sample else None
     return await asyncio.to_thread(_synthesize_sync, text, voice, speed, sample)
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Split text into sentence-sized chunks for streaming synthesis.
+
+    Merges short fragments so each chunk is ≥60 chars — avoids per-call
+    overhead on single words while keeping latency per chunk under ~1s.
+    """
+    raw = re.split(r'(?<=[.!?;])\s+', text.strip())
+    chunks: list[str] = []
+    buf = ""
+    for part in raw:
+        buf = (buf + " " + part).strip() if buf else part
+        if len(buf) >= 60:
+            chunks.append(buf)
+            buf = ""
+    if buf:
+        if chunks:
+            chunks[-1] = (chunks[-1] + " " + buf).strip()
+        else:
+            chunks.append(buf)
+    return [c for c in chunks if c]
+
+
+async def synthesize_stream(text: str, voice: str = "studio", speed: float = 1.0,
+                             clone_sample: str | Path | None = None):
+    """Async generator: yields one complete WAV bytes object per sentence chunk.
+
+    Callers can start playing the first chunk in ~300 ms instead of waiting
+    for the full clip, matching ElevenLabs real-time streaming latency.
+    """
+    sample = str(clone_sample) if clone_sample else None
+    for chunk in _split_sentences(text):
+        wav = await asyncio.to_thread(_synthesize_sync, chunk, voice, speed, sample)
+        yield wav

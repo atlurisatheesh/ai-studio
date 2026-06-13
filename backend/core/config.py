@@ -44,10 +44,13 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
 # --- Avatar lipsync (Phase 2) ---
-# sadtalker | musetalk | none  (none = portrait + audio preview only)
+# sadtalker | musetalk | echomimic | liveportrait | none
+# none = portrait + narrated audio preview (no motion), works on any machine
 AVATAR_ENGINE = os.environ.get("AVATAR_ENGINE", "none")
 SADTALKER_DIR = os.environ.get("SADTALKER_DIR", "")
 MUSETALK_DIR = os.environ.get("MUSETALK_DIR", "")
+ECHOMIMIC_DIR = os.environ.get("ECHOMIMIC_DIR", "")
+LIVEPORTRAIT_DIR = os.environ.get("LIVEPORTRAIT_DIR", "")
 AVATAR_PYTHON = os.environ.get("AVATAR_PYTHON", "python3")  # interpreter of the avatar engine's venv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
