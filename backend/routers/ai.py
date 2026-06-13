@@ -1,7 +1,9 @@
 """AI helper router: scripts, translation, voice agent — local LLM only."""
 import base64
+import json
 from typing import Optional
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from core.config import logger
@@ -112,6 +114,59 @@ async def agent_chat(req: AgentChatRequest, user: CurrentUser):
         except Exception:
             logger.warning("Agent TTS failed; returning text only")
     return {"reply": reply, "audio_base64": audio_b64}
+
+
+@router.post("/agent/chat/stream")
+async def agent_chat_stream(req: AgentChatRequest, user: CurrentUser):
+    """SSE: streams LLM tokens as they arrive so text appears word-by-word.
+
+    Events: data:{"token":"…"} per token, data:{"done":true,"text":"full reply"} at end.
+    The caller should follow up with /voice/tts/stream for audio if needed.
+    """
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO agent_messages (session_id, user_id, role, text, ts) VALUES (?,?,?,?,?)",
+        (req.session_id, user["id"], "user", req.message, now_iso()),
+    )
+    await db.commit()
+
+    cur = await db.execute(
+        "SELECT role, text FROM agent_messages WHERE session_id = ? AND user_id = ? "
+        "ORDER BY id DESC LIMIT 20", (req.session_id, user["id"]),
+    )
+    history = [{"role": r["role"], "content": r["text"]} for r in reversed(await cur.fetchall())]
+
+    sys_msg = (
+        "You are ArcVox Agent — a witty, sharp, helpful voice agent running fully on the "
+        "user's own hardware. Keep replies natural and conversational, 2-4 sentences. "
+        "Be specific and warm. Avoid robotic phrasing."
+    )
+
+    async def event_gen():
+        tokens: list[str] = []
+        try:
+            async for token in llm.chat_stream(sys_msg, history):
+                tokens.append(token)
+                yield f"data: {json.dumps({'token': token})}\n\n"
+            full_reply = "".join(tokens).strip()
+            db2 = await get_db()
+            await db2.execute(
+                "INSERT INTO agent_messages (session_id, user_id, role, text, ts) VALUES (?,?,?,?,?)",
+                (req.session_id, user["id"], "assistant", full_reply, now_iso()),
+            )
+            await db2.commit()
+            yield f"data: {json.dumps({'done': True, 'text': full_reply})}\n\n"
+        except RuntimeError as e:
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+        except Exception as e:
+            logger.exception("Agent stream error")
+            yield f"data: {json.dumps({'error': f'Agent error: {e}', 'done': True})}\n\n"
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/agent/session/{session_id}")

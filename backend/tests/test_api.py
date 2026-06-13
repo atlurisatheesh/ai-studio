@@ -41,11 +41,16 @@ def mock_engines(monkeypatch):
     async def fake_complete(system, prompt, temperature=0.7):
         return "mocked output"
 
+    async def fake_chat_stream(system, messages, temperature=0.7):
+        yield "mocked "
+        yield "reply."
+
     monkeypatch.setattr(tts, "synthesize", fake_synthesize)
     monkeypatch.setattr(tts, "synthesize_stream", fake_synthesize_stream)
     monkeypatch.setattr(stt, "transcribe", fake_transcribe)
     monkeypatch.setattr(llm, "chat", fake_chat)
     monkeypatch.setattr(llm, "complete", fake_complete)
+    monkeypatch.setattr(llm, "chat_stream", fake_chat_stream)
 
 
 @pytest.fixture(scope="module")
@@ -196,6 +201,28 @@ def test_projects_crud(client, auth_headers):
 
     only_tts = client.get("/api/projects?kind=tts", headers=auth_headers).json()
     assert all(p["kind"] == "tts" for p in only_tts)
+
+
+def test_agent_chat_stream(client, auth_headers):
+    r = client.post("/api/agent/chat/stream",
+                    json={"session_id": "stream_s1", "message": "hello"},
+                    headers=auth_headers)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/event-stream")
+    import json as _json
+    events = []
+    for line in r.text.split("\n\n"):
+        line = line.strip()
+        if line.startswith("data: "):
+            events.append(_json.loads(line[6:]))
+    tokens = [e["token"] for e in events if "token" in e]
+    done_ev = next((e for e in events if e.get("done")), None)
+    assert tokens, "No token events received"
+    assert done_ev, "No done event received"
+    assert done_ev["text"] == "mocked reply."
+    # History should be persisted
+    sess = client.get("/api/agent/session/stream_s1", headers=auth_headers).json()
+    assert any(m["role"] == "assistant" and "mocked" in m["text"] for m in sess["messages"])
 
 
 def test_tts_stream(client, auth_headers):

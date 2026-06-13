@@ -3,6 +3,7 @@
 Ollama runs on the same machine (or the operator's own LAN/server).
 No prompt or output ever reaches a third-party API.
 """
+import json
 import httpx
 
 from core.config import OLLAMA_URL, OLLAMA_MODEL
@@ -50,3 +51,35 @@ async def chat(system: str, messages: list[dict], temperature: float = 0.7) -> s
 
 async def complete(system: str, prompt: str, temperature: float = 0.7) -> str:
     return await chat(system, [{"role": "user", "content": prompt}], temperature)
+
+
+async def chat_stream(system: str, messages: list[dict], temperature: float = 0.7):
+    """Async generator yielding text tokens as Ollama produces them.
+
+    Each yielded value is a string fragment (one or more chars). Callers
+    can display tokens live and trigger TTS on sentence boundaries without
+    waiting for the full reply.
+    """
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": [{"role": "system", "content": system}, *messages],
+        "stream": True,
+        "options": {"temperature": temperature},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            async with client.stream("POST", f"{OLLAMA_URL}/api/chat", json=payload) as r:
+                if r.status_code == 404:
+                    raise RuntimeError(f"Model '{OLLAMA_MODEL}' not pulled. Run: ollama pull {OLLAMA_MODEL}")
+                r.raise_for_status()
+                async for line in r.aiter_lines():
+                    if not line:
+                        continue
+                    data = json.loads(line)
+                    token = data.get("message", {}).get("content", "")
+                    if token:
+                        yield token
+                    if data.get("done"):
+                        return
+    except httpx.ConnectError:
+        raise RuntimeError(NOT_RUNNING_HINT)
