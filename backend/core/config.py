@@ -1,7 +1,7 @@
 """ArcVox Private Studio — configuration.
 
-Everything runs locally. No third-party AI APIs are ever called.
-All settings come from environment variables with safe defaults.
+Voice, transcription, and avatar engines run fully locally.
+LLM can be local (Ollama) or Grok (xAI) — set LLM_PROVIDER in .env.
 """
 import os
 import logging
@@ -39,9 +39,18 @@ TTS_ENGINE = os.environ.get("TTS_ENGINE", "auto")                  # auto | chat
 CHATTERBOX_DEVICE = os.environ.get("CHATTERBOX_DEVICE", "cuda")
 PIPER_VOICES_DIR = Path(os.environ.get("PIPER_VOICES_DIR", DATA_DIR / "piper_voices"))
 
-# --- Local LLM (Ollama) for scripts / translation / agent chat ---
+# --- LLM backend: ollama (local, default) or grok (xAI cloud) ---
+# LLM_PROVIDER=grok requires GROK_API_KEY. Voice/TTS/avatar always stay local.
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()  # ollama | grok
+
+# Ollama (local, privacy-first)
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+
+# Grok / xAI (optional cloud LLM — only the text prompt/response crosses the wire)
+GROK_API_KEY = os.environ.get("GROK_API_KEY", "")
+GROK_MODEL = os.environ.get("GROK_MODEL", "grok-3-mini")          # grok-3-mini | grok-3 | grok-beta
+GROK_BASE_URL = "https://api.x.ai/v1"
 
 # --- Avatar lipsync (Phase 2) ---
 # sadtalker | musetalk | echomimic | liveportrait | none
