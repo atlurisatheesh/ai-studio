@@ -3,7 +3,7 @@ import mimetypes
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from core.config import UPLOAD_DIR, OUTPUT_DIR
+from core.config import UPLOAD_DIR, OUTPUT_DIR, LLM_PROVIDER, GROK_MODEL
 from core.db import get_db
 from engines import stt, tts, llm, avatar
 
@@ -34,13 +34,29 @@ async def public_stats():
 
 @router.get("/engines/status")
 async def engines_status():
-    """Live health of every local AI engine — shown in the studio UI."""
+    """Live health of every local AI engine — shown in the studio UI.
+
+    Reports honestly whether any data leaves this server. Voice, cloning,
+    transcription and avatars are always local; only the LLM can optionally
+    be a cloud provider (Grok/xAI), in which case text prompts/replies are
+    sent to that provider and the UI shows a clear banner.
+    """
+    cloud_llm = LLM_PROVIDER == "grok"
+    if cloud_llm:
+        privacy = (
+            f"CLOUD LLM ACTIVE — agent/script/translate text is sent to xAI ({GROK_MODEL}). "
+            "Voice, cloning, transcription and avatars still run locally."
+        )
+    else:
+        privacy = "All inference runs on this server. No external AI APIs."
     return {
         "stt": stt.status(),
         "tts": tts.status(),
         "llm": await llm.status(),
         "avatar": avatar.status(),
-        "privacy": "All inference runs on this server. No external AI APIs.",
+        "llm_provider": LLM_PROVIDER,
+        "cloud_llm_active": cloud_llm,
+        "privacy": privacy,
     }
 
 

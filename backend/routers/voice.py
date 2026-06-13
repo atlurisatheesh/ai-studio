@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from core.config import UPLOAD_DIR, logger
 from core.db import get_db
 from core.security import CurrentUser, get_current_user, save_project, now_iso
+from core.uploads import read_capped
 from engines import tts, stt
 
 router = APIRouter(prefix="/voice", tags=["voice"])
@@ -105,7 +106,7 @@ async def voice_transcribe(file: UploadFile = File(...), user: dict = Depends(ge
     if suffix not in AUDIO_EXTS:
         suffix = "mp3"
     tmp_path = UPLOAD_DIR / f"stt_{uuid.uuid4().hex}.{suffix}"
-    tmp_path.write_bytes(await file.read())
+    tmp_path.write_bytes(await read_capped(file))
     try:
         result = await stt.transcribe(tmp_path)
     except RuntimeError as e:
@@ -132,7 +133,7 @@ async def voice_clone(
     if suffix not in AUDIO_EXTS:
         raise HTTPException(status_code=400, detail="Upload an audio file (wav/mp3/m4a/flac/ogg)")
     storage_path = UPLOAD_DIR / f"voice_{uuid.uuid4().hex}.{suffix}"
-    storage_path.write_bytes(await sample.read())
+    storage_path.write_bytes(await read_capped(sample))
 
     cloning_live = tts.status()["cloning_supported"]
     record = {

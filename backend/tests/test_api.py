@@ -9,6 +9,9 @@ from pathlib import Path
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="arcvox_test_"))
 os.environ.setdefault("JWT_SECRET", "test-secret")
 os.environ.setdefault("ADMIN_PASSWORD", "test-admin-pass")
+os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "0")   # disable per-IP cap during tests
+os.environ.setdefault("MAX_UPLOAD_MB", "5")           # small cap so the size test is cheap
+os.environ.setdefault("OUTPUT_TTL_HOURS", "0")        # no cleanup timer in tests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -71,6 +74,21 @@ def test_root_and_engine_status(client):
     assert client.get("/api/").json()["self_hosted"] is True
     s = client.get("/api/engines/status").json()
     assert {"stt", "tts", "llm", "avatar"} <= set(s)
+    # privacy must be reported honestly
+    assert "cloud_llm_active" in s and "llm_provider" in s and "privacy" in s
+    # default test env uses local Ollama → not cloud
+    assert s["cloud_llm_active"] is False
+    assert "No external AI APIs" in s["privacy"]
+
+
+def test_upload_size_limit(client, auth_headers):
+    # MAX_UPLOAD_MB=5 in test env → a 6 MB upload must be rejected with 413
+    big = io.BytesIO(b"\x00" * (6 * 1024 * 1024))
+    r = client.post("/api/voice/transcribe",
+                    files={"file": ("big.wav", big, "audio/wav")},
+                    headers=auth_headers)
+    assert r.status_code == 413, r.status_code
+    assert "too large" in r.json()["detail"].lower()
 
 
 def test_auth_flow(client):

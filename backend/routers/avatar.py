@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from core.config import UPLOAD_DIR
 from core.db import get_db
 from core.security import CurrentUser, get_current_user
+from core.uploads import read_capped
 from engines import avatar as avatar_engine
 from routers.voice import _resolve_clone
 
@@ -29,7 +30,7 @@ async def avatar_generate(
     if suffix not in IMAGE_EXTS:
         raise HTTPException(status_code=400, detail="Upload a portrait image (jpg/png/webp)")
     image_path = UPLOAD_DIR / f"portrait_{uuid.uuid4().hex}.{suffix}"
-    image_path.write_bytes(await portrait.read())
+    image_path.write_bytes(await read_capped(portrait))
 
     clone_sample = await _resolve_clone(voice, user["id"])
     job = await avatar_engine.create_job(user["id"], script, voice, str(image_path), clone_sample)

@@ -1,24 +1,41 @@
 # ArcVox Private Studio
 
-A self-hosted **HeyGen + ElevenLabs alternative**. Every AI model — speech
-synthesis, voice cloning, transcription, LLM, avatar lipsync — runs on
-hardware **you** control. No third-party AI API is ever called. Your voice,
-your face, your scripts never leave your server.
+A self-hosted **HeyGen + ElevenLabs alternative**. Voice synthesis, voice
+cloning, transcription and avatar lipsync **always run on hardware you
+control** — your voice, your face, your audio never leave your server.
+
+The only component that can optionally use the cloud is the **LLM** (scripts,
+translation, voice-agent chat). It defaults to a fully-local model via
+[Ollama](https://ollama.com); you may switch it to **Grok / xAI** for stronger
+results, in which case only the text prompt and reply are sent to xAI. The
+studio shows a clear **"CLOUD LLM ACTIVE"** banner whenever that mode is on,
+and `GET /api/engines/status` reports it honestly (`cloud_llm_active`).
 
 ## Modules
 
-| Module | Engine (all local) | License | Runs on |
-|---|---|---|---|
-| Voice / TTS | [Chatterbox](https://github.com/resemble-ai/chatterbox) (HD) or [Piper](https://github.com/rhasspy/piper) (fast) | MIT | GPU / CPU |
-| Voice Cloning | Chatterbox zero-shot (10–30s sample) | MIT | GPU |
-| Transcription | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (up to large-v3) | MIT | CPU / GPU |
-| Script Writer / Translate / Voice Agent | Any [Ollama](https://ollama.com) model (default llama3.1:8b) | varies | CPU / GPU |
-| AI Avatar | [SadTalker](https://github.com/OpenTalker/SadTalker) / [MuseTalk](https://github.com/TMElyralab/MuseTalk) lipsync of **your own photo** | check repo | GPU 16–24GB |
-| Project Library | SQLite — one file on your disk | — | anywhere |
+| Module | Engine | Privacy | License | Runs on |
+|---|---|---|---|---|
+| Voice / TTS | [Chatterbox](https://github.com/resemble-ai/chatterbox) (HD) or [Piper](https://github.com/rhasspy/piper) (fast) | always local | MIT | GPU / CPU |
+| Voice Cloning | Chatterbox zero-shot (10–30s sample) | always local | MIT | GPU |
+| Transcription | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (up to large-v3) | always local | MIT | CPU / GPU |
+| Script / Translate / Voice Agent | [Ollama](https://ollama.com) (local) **or** Grok/xAI (cloud, opt-in) | local by default | varies | CPU / GPU / cloud |
+| AI Avatar | [SadTalker](https://github.com/OpenTalker/SadTalker) / [MuseTalk](https://github.com/TMElyralab/MuseTalk) / [EchoMimic](https://github.com/BadToBest/EchoMimic) / [LivePortrait](https://github.com/KwaiVision/LivePortrait) lipsync of **your own photo** | always local | check repo | GPU 8–24GB |
+| Project Library | SQLite — one file on your disk | always local | — | anywhere |
 
 Every module degrades gracefully: with no GPU and no models installed the
 API stays up and reports exactly what's missing at `GET /api/engines/status`
 (also shown on the dashboard).
+
+## Privacy posture (read this)
+
+- **No analytics, no trackers, no external scripts** in the frontend. The page
+  loads zero third-party resources — fonts included (system-font fallbacks ship
+  by default; self-host the brand faces via `scripts/setup_fonts.sh`).
+- **Audio, faces, transcripts stay local — always.** There is no code path that
+  sends them off the box.
+- **Cloud LLM is the one opt-in exception.** With `LLM_PROVIDER=grok`, agent /
+  script / translate text goes to xAI. Leave it `ollama` for a fully-offline
+  deployment.
 
 ## Accuracy — honest expectations
 

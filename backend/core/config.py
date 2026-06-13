@@ -26,6 +26,22 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")  # if empty, a random one 
 
 CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 
+if not os.environ.get("JWT_SECRET"):
+    logging.getLogger("arcvox").warning(
+        "JWT_SECRET is not set — using a random per-process secret. Tokens will "
+        "invalidate on restart and break across multiple workers. Set JWT_SECRET in .env."
+    )
+
+# --- Production hardening ---
+# Max size for any single uploaded file (audio sample, portrait, clip).
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "50"))
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+# Generated media (TTS/avatar outputs) older than this are purged on a timer.
+# 0 disables automatic cleanup.
+OUTPUT_TTL_HOURS = int(os.environ.get("OUTPUT_TTL_HOURS", "48"))
+# Simple per-IP request cap (requests per minute). 0 disables rate limiting.
+RATE_LIMIT_PER_MINUTE = int(os.environ.get("RATE_LIMIT_PER_MINUTE", "120"))
+
 # --- Speech-to-text (faster-whisper, runs in-process) ---
 # Accuracy ladder: tiny < base < small < medium < large-v3 (use large-v3 on GPU for max accuracy)
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")

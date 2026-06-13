@@ -92,16 +92,28 @@ export default function Landing() {
           </div>
 
           <div className="col-span-12 md:col-span-5 relative">
-            <div className="aspect-[4/5] border border-white/10 overflow-hidden relative card-panel">
-              <img
-                src="https://static.prod-images.emergentagent.com/jobs/97450337-22c5-4ae8-a658-1a62539f373c/images/845696ab3772260af857de8809b585f61d363131669372b7ffc1366f8e11d5af.png"
-                alt="Recording studio"
-                className="w-full h-full object-cover opacity-90"
-              />
+            <div className="aspect-[4/5] border border-white/10 overflow-hidden relative card-panel bg-gradient-to-br from-[#1a1a1a] via-[#0d0d0d] to-studio-void">
+              {/* Self-hosted waveform visual — no external image requests */}
+              <div className="absolute inset-0 flex items-center justify-center gap-[3px] px-8 opacity-70">
+                {Array.from({ length: 48 }).map((_, i) => {
+                  const h = 12 + Math.abs(Math.sin(i * 0.6) * Math.cos(i * 0.25)) * 78;
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 rounded-sm"
+                      style={{
+                        height: `${h}%`,
+                        background: i % 7 === 0 ? "#FF331F" : "rgba(255,255,255,0.18)",
+                      }}
+                    />
+                  );
+                })}
+              </div>
               <div className="absolute inset-0 bg-gradient-to-t from-studio-void via-transparent to-transparent" />
+              <div className="absolute top-4 left-4 mono-label text-studio-dim">// LIVE SESSION</div>
               <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
                 <div>
-                  <div className="mono-label mb-1 text-studio-red">REC ●</div>
+                  <div className="mono-label mb-1 text-studio-red animate-pulse-red">REC ●</div>
                   <div className="text-sm font-mono">SESSION_00x.WAV</div>
                 </div>
                 <div className="mono-label">04:32:18</div>
@@ -158,27 +170,37 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* SHOWCASE STRIPS */}
+      {/* SHOWCASE STRIPS — self-hosted CSS visuals, no external images */}
       <section className="border-b border-white/10 grid grid-cols-1 md:grid-cols-3">
         {[
           {
             tag: "AI AVATAR",
             title: "Talking-head video from YOUR portrait.",
-            img: "https://static.prod-images.emergentagent.com/jobs/97450337-22c5-4ae8-a658-1a62539f373c/images/dd146a69318ad148248c8d4ee29bf17024a265dd1ff2eb6695857f65d83d85fc.png",
+            Icon: UserCircle,
+            from: "#2a1115",
           },
           {
             tag: "VOICE CLONE",
             title: "30 seconds of you. Cloned on your GPU.",
-            img: "https://static.prod-images.emergentagent.com/jobs/97450337-22c5-4ae8-a658-1a62539f373c/images/f6a8287fc6e336cfd901e9eeb224cbad4ad73aba91eabd85f2aea1ca41c5b5b0.png",
+            Icon: Copy,
+            from: "#141414",
           },
           {
             tag: "VOICE AGENT",
             title: "Agents that never phone home.",
-            img: "https://static.prod-images.emergentagent.com/jobs/97450337-22c5-4ae8-a658-1a62539f373c/images/ed65294cf45937a6321e7ecc791770234001dc5dc200ff205c05cb10041237ea.png",
+            Icon: ChatTeardropDots,
+            from: "#101820",
           },
         ].map((s, i) => (
-          <div key={i} className="border-r border-white/10 last:border-r-0 relative aspect-square overflow-hidden group">
-            <img src={s.img} alt={s.tag} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+          <div
+            key={i}
+            className="border-r border-white/10 last:border-r-0 relative aspect-square overflow-hidden group"
+            style={{ background: `linear-gradient(135deg, ${s.from}, #050505)` }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center transition-transform duration-700 group-hover:scale-110">
+              <s.Icon size={120} weight="thin" className="text-white/10" />
+            </div>
+            <div className="absolute inset-0 grain" />
             <div className="absolute inset-0 bg-gradient-to-t from-studio-void via-studio-void/40 to-transparent" />
             <div className="absolute bottom-6 left-6 right-6">
               <div className="mono-label text-studio-red mb-3">// {s.tag}</div>
@@ -204,7 +226,7 @@ export default function Landing() {
               ["Transcription", "—", "✓", "✓ Whisper large-v3"],
               ["Voice agents", "—", "✓", "✓ Local LLM"],
               ["Runs on YOUR server", "No", "No", "Yes"],
-              ["Data leaves your machine", "Always", "Always", "Never"],
+              ["Data leaves your machine", "Always", "Always", "Never*"],
               ["Per-generation API fees", "Yes", "Yes", "None"],
               ["Open-source engines", "No", "No", "Yes (MIT)"],
               ["Single workspace", "No", "No", "Yes"],
@@ -214,6 +236,12 @@ export default function Landing() {
               ))
             ))}
           </div>
+          <p className="mono-label mt-4 text-studio-dim normal-case tracking-normal text-xs max-w-2xl">
+            * In the default fully-local configuration, nothing leaves your server. ArcVox also offers an
+            <span className="text-white"> optional cloud LLM (Grok/xAI)</span> for stronger scripts and agents —
+            when enabled, only the text prompt and reply are sent to xAI. The studio shows a clear banner whenever
+            cloud mode is active. Voice, cloning, transcription and avatars always run locally.
+          </p>
         </div>
       </section>
 

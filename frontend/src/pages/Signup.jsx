@@ -33,12 +33,16 @@ export default function Signup() {
 
   return (
     <div className="min-h-screen bg-studio-void grid grid-cols-1 md:grid-cols-2">
-      <div className="hidden md:block relative border-r border-white/10 grain">
-        <img
-          src="https://static.prod-images.emergentagent.com/jobs/97450337-22c5-4ae8-a658-1a62539f373c/images/dd146a69318ad148248c8d4ee29bf17024a265dd1ff2eb6695857f65d83d85fc.png"
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover opacity-50"
-        />
+      <div className="hidden md:block relative border-r border-white/10 grain bg-gradient-to-br from-[#2a1115] via-[#0d0d0d] to-studio-void">
+        <div className="absolute inset-0 flex items-center justify-center gap-[3px] px-16 opacity-40">
+          {Array.from({ length: 40 }).map((_, i) => {
+            const h = 8 + Math.abs(Math.cos(i * 0.45) * Math.sin(i * 0.35)) * 70;
+            return (
+              <div key={i} className="flex-1 rounded-sm"
+                style={{ height: `${h}%`, background: i % 5 === 0 ? "#FF331F" : "rgba(255,255,255,0.2)" }} />
+            );
+          })}
+        </div>
         <div className="absolute inset-0 bg-gradient-to-r from-studio-void/60 to-transparent" />
         <div className="relative h-full p-12 flex flex-col justify-between">
           <Link to="/" className="font-display text-2xl tracking-tight">

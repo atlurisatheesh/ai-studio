@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
+import asyncio  # noqa: E402
 import os  # noqa: E402
 import secrets  # noqa: E402
 import uuid  # noqa: E402
@@ -21,6 +22,8 @@ from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 from core.config import CORS_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD, logger  # noqa: E402
 from core.db import get_db, close_db  # noqa: E402
 from core.security import hash_password, now_iso  # noqa: E402
+from core.ratelimit import RateLimitMiddleware  # noqa: E402
+from core.cleanup import cleanup_loop  # noqa: E402
 from routers import auth, voice, ai, avatar, projects, misc  # noqa: E402
 
 
@@ -48,7 +51,9 @@ async def _seed_admin():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _seed_admin()
+    cleanup_task = asyncio.create_task(cleanup_loop())
     yield
+    cleanup_task.cancel()
     db = await get_db()
     await db.execute(
         "UPDATE avatar_jobs SET status = 'interrupted', "
@@ -78,6 +83,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RateLimitMiddleware)
 
 
 if __name__ == "__main__":

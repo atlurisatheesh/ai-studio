@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
 import {
   House,
   Microphone,
@@ -12,6 +14,7 @@ import {
   SignOut,
   Copy,
   ShieldCheck,
+  CloudWarning,
 } from "@phosphor-icons/react";
 
 const NAV = [
@@ -29,6 +32,14 @@ const NAV = [
 export default function AppLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [cloudLLM, setCloudLLM] = useState(false);
+
+  useEffect(() => {
+    api.get("/engines/status")
+      .then((r) => setCloudLLM(Boolean(r.data?.cloud_llm_active)))
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="min-h-screen flex bg-studio-void text-white">
       {/* Sidebar */}
@@ -64,9 +75,15 @@ export default function AppLayout() {
         <div className="border-t border-white/10 p-4">
           <div className="mono-label mb-2">SIGNED IN</div>
           <div className="text-sm truncate" data-testid="sidebar-user-email">{user?.email}</div>
-          <div className="mono-label text-studio-red mt-1 flex items-center gap-1" data-testid="sidebar-privacy-badge">
-            <ShieldCheck size={12} /> SELF-HOSTED · PRIVATE
-          </div>
+          {cloudLLM ? (
+            <div className="mono-label text-amber-400 mt-1 flex items-center gap-1" data-testid="sidebar-privacy-badge">
+              <CloudWarning size={12} /> CLOUD LLM ACTIVE
+            </div>
+          ) : (
+            <div className="mono-label text-studio-red mt-1 flex items-center gap-1" data-testid="sidebar-privacy-badge">
+              <ShieldCheck size={12} /> SELF-HOSTED · PRIVATE
+            </div>
+          )}
           <button
             onClick={async () => { await logout(); navigate("/"); }}
             className="mt-3 w-full flex items-center justify-center gap-2 border border-white/15 hover:border-white px-3 py-2 text-xs font-mono uppercase tracking-widest"
@@ -81,8 +98,19 @@ export default function AppLayout() {
       <main className="flex-1 overflow-y-auto">
         <div className="h-12 border-b border-white/10 flex items-center justify-between px-6">
           <div className="flex items-center gap-3">
-            <span className="w-2 h-2 bg-studio-red animate-pulse-red" />
-            <span className="mono-label">LOCAL ENGINES · NO CLOUD APIS</span>
+            {cloudLLM ? (
+              <>
+                <span className="w-2 h-2 bg-amber-400 animate-pulse-red" />
+                <span className="mono-label text-amber-400 flex items-center gap-1.5">
+                  <CloudWarning size={13} /> CLOUD LLM ACTIVE · LLM TEXT LEAVES THIS SERVER
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 bg-studio-red animate-pulse-red" />
+                <span className="mono-label">LOCAL ENGINES · NO CLOUD APIS</span>
+              </>
+            )}
           </div>
           <div className="mono-label">{new Date().toUTCString().slice(17, 25)} UTC</div>
         </div>
