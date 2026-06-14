@@ -22,6 +22,7 @@ class TTSRequest(BaseModel):
     voice: str = "studio"
     model: str = "local"   # kept for frontend compatibility; engine is chosen server-side
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
+    language: str = "auto"  # used by Indic Parler-TTS (hi/ta/te/bn/…); ignored otherwise
 
 
 async def _resolve_clone(voice_id: str, user_id: str) -> str | None:
@@ -46,7 +47,8 @@ async def voice_library(user: CurrentUser):
         "WHERE user_id = ? ORDER BY created_at DESC", (user["id"],)
     )
     cloned = [dict(r) for r in await cur.fetchall()]
-    return {"system": tts.system_voices(), "cloned": cloned, "engine": tts.BACKEND}
+    return {"system": tts.system_voices(), "cloned": cloned, "engine": tts.BACKEND,
+            "languages": tts.supported_languages()}
 
 
 @router.post("/tts")
@@ -54,7 +56,7 @@ async def voice_tts(req: TTSRequest, user: CurrentUser):
     clone_sample = await _resolve_clone(req.voice, user["id"])
     try:
         audio = await tts.synthesize(req.text, voice=req.voice, speed=req.speed,
-                                     clone_sample=clone_sample)
+                                     clone_sample=clone_sample, language=req.language)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
@@ -82,7 +84,8 @@ async def voice_tts_stream(req: TTSRequest, user: CurrentUser):
         try:
             async for wav in tts.synthesize_stream(req.text, voice=req.voice,
                                                     speed=req.speed,
-                                                    clone_sample=clone_sample):
+                                                    clone_sample=clone_sample,
+                                                    language=req.language):
                 payload = json.dumps({"chunk": base64.b64encode(wav).decode(), "index": idx})
                 yield f"data: {payload}\n\n"
                 idx += 1

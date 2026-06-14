@@ -32,9 +32,14 @@ fi
 
 echo "── 4/4 GPU engines (optional, for HD voice + avatars) ───────────────"
 cat <<'EOF'
-   Chatterbox (HD TTS + zero-shot voice cloning, MIT):
+   Chatterbox (HD TTS + zero-shot voice cloning, 23 langs incl Hindi, MIT):
        pip install chatterbox-tts
        # then set TTS_ENGINE=chatterbox in .env
+
+   Indic Parler-TTS (21 Indian languages — Tamil/Telugu/Bengali/…, Apache-2.0):
+       pip install git+https://github.com/huggingface/parler-tts.git
+       # gated model: accept terms at https://hf.co/ai4bharat/indic-parler-tts
+       # then set TTS_ENGINE=indic_parler and HF_TOKEN=<your token> in .env
 
    SadTalker (talking-head lipsync from one photo, ~8GB VRAM):
        git clone https://github.com/OpenTalker/SadTalker

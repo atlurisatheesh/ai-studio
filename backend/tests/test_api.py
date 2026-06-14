@@ -26,10 +26,10 @@ FAKE_WAV = b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00" + b"\
 
 @pytest.fixture(autouse=True)
 def mock_engines(monkeypatch):
-    async def fake_synthesize(text, voice="studio", speed=1.0, clone_sample=None):
+    async def fake_synthesize(text, voice="studio", speed=1.0, clone_sample=None, language="auto"):
         return FAKE_WAV
 
-    async def fake_synthesize_stream(text, voice="studio", speed=1.0, clone_sample=None):
+    async def fake_synthesize_stream(text, voice="studio", speed=1.0, clone_sample=None, language="auto"):
         # Yield two chunks to simulate sentence streaming
         yield FAKE_WAV
         yield FAKE_WAV

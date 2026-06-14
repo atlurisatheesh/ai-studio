@@ -1,13 +1,21 @@
 """Text-to-speech with zero-shot voice cloning — fully local.
 
-Two interchangeable backends:
+Three interchangeable backends:
 
-  chatterbox — Resemble AI's Chatterbox (MIT license, commercial-safe).
-               Near-ElevenLabs quality and clones any voice from a short
-               reference clip. Needs a GPU (~12 GB VRAM) for usable speed.
+  chatterbox   — Resemble AI's Chatterbox (MIT, commercial-safe). Near-ElevenLabs
+                 quality + zero-shot voice cloning. 23 languages incl. Hindi.
+                 Needs a GPU (~12 GB VRAM).
 
-  piper      — Rhasspy Piper (MIT). Real-time on CPU, good (not stunning)
-               quality, no cloning. Lets the studio run on any machine.
+  indic_parler — AI4Bharat Indic Parler-TTS (Apache-2.0, commercial-safe).
+                 21 languages including all major Indian ones: Hindi, Tamil,
+                 Telugu, Bengali, Gujarati, Kannada, Malayalam, Marathi, Punjabi,
+                 Odia, Assamese, Urdu, Kashmiri, Sanskrit, Sindhi, Nepali, + English.
+                 Voice is controlled by a natural-language description; the
+                 language is inferred from the input script. No cloning. GPU.
+                 (Gated model — accept terms on HF and set HF_TOKEN to download.)
+
+  piper        — Rhasspy Piper (MIT). Real-time on CPU, decent quality, no
+                 cloning. Lets the studio run on any machine.
 
 The active backend is chosen by TTS_ENGINE (auto picks chatterbox when
 importable, else piper). Voice ids starting with "cv_" refer to a user's
@@ -23,7 +31,8 @@ import re
 import wave
 from pathlib import Path
 
-from core.config import TTS_ENGINE, CHATTERBOX_DEVICE, PIPER_VOICES_DIR, logger
+from core.config import (TTS_ENGINE, CHATTERBOX_DEVICE, INDIC_PARLER_DEVICE,
+                         INDIC_PARLER_MODEL, PIPER_VOICES_DIR, logger)
 
 # Style presets exposed as the "system voice library" when Chatterbox is
 # active. Chatterbox has one base voice; presets vary delivery. Cloned
@@ -35,13 +44,42 @@ CHATTERBOX_PRESETS = [
     {"id": "dramatic", "name": "Dramatic", "gender": "neutral", "tags": ["expressive", "trailer"], "exaggeration": 1.0, "cfg_weight": 0.3},
 ]
 
+# Indic Parler controls the voice via a natural-language description.
+# Each preset is a description string; the spoken language comes from the
+# script of the input text (e.g. Devanagari → Hindi, Tamil script → Tamil).
+INDIC_PARLER_PRESETS = [
+    {"id": "studio", "name": "Studio Narrator", "gender": "neutral", "tags": ["balanced", "narration"],
+     "description": "A clear, neutral narrator with crisp, studio-quality recording and a moderate pace."},
+    {"id": "warm_female", "name": "Warm Female", "gender": "female", "tags": ["warm", "friendly"],
+     "description": "A warm, friendly female voice speaking clearly at a moderate pace with high recording quality."},
+    {"id": "news_male", "name": "News Anchor", "gender": "male", "tags": ["news", "confident"],
+     "description": "A confident male news anchor voice, articulate and clear, with professional recording quality."},
+    {"id": "calm", "name": "Calm Soft", "gender": "neutral", "tags": ["calm", "soft"],
+     "description": "A calm, soft-spoken voice with a gentle, soothing tone and very clear recording."},
+]
+
+# Languages Indic Parler-TTS can speak (ISO codes).
+INDIC_LANGUAGES = [
+    {"code": "hi", "name": "Hindi"}, {"code": "ta", "name": "Tamil"},
+    {"code": "te", "name": "Telugu"}, {"code": "bn", "name": "Bengali"},
+    {"code": "gu", "name": "Gujarati"}, {"code": "kn", "name": "Kannada"},
+    {"code": "ml", "name": "Malayalam"}, {"code": "mr", "name": "Marathi"},
+    {"code": "pa", "name": "Punjabi"}, {"code": "or", "name": "Odia"},
+    {"code": "as", "name": "Assamese"}, {"code": "ur", "name": "Urdu"},
+    {"code": "ks", "name": "Kashmiri"}, {"code": "sa", "name": "Sanskrit"},
+    {"code": "sd", "name": "Sindhi"}, {"code": "ne", "name": "Nepali"},
+    {"code": "en", "name": "English"},
+]
+
 _chatterbox = None
 _chatterbox_error: str | None = None
 _piper_voices: dict[str, object] = {}
+_indic = None  # (model, prompt_tokenizer, description_tokenizer)
+_indic_error: str | None = None
 
 
 def _detect_backend() -> str:
-    if TTS_ENGINE in ("chatterbox", "piper"):
+    if TTS_ENGINE in ("chatterbox", "piper", "indic_parler"):
         return TTS_ENGINE
     try:
         import chatterbox  # noqa: F401
@@ -69,6 +107,14 @@ def _chatterbox_available() -> bool:
         return False
 
 
+def _indic_available() -> bool:
+    try:
+        import parler_tts  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def list_piper_voices() -> list[dict]:
     voices = []
     if PIPER_VOICES_DIR.exists():
@@ -81,17 +127,29 @@ def list_piper_voices() -> list[dict]:
 def system_voices() -> list[dict]:
     if BACKEND == "chatterbox":
         return [{k: v for k, v in p.items() if k in ("id", "name", "gender", "tags")} for p in CHATTERBOX_PRESETS]
+    if BACKEND == "indic_parler":
+        return [{k: v for k, v in p.items() if k in ("id", "name", "gender", "tags")} for p in INDIC_PARLER_PRESETS]
     return list_piper_voices()
+
+
+def supported_languages() -> list[dict]:
+    """Languages the active backend can speak (for the UI language picker)."""
+    if BACKEND == "indic_parler":
+        return INDIC_LANGUAGES
+    return []
 
 
 def status() -> dict:
     return {
         "backend": BACKEND,
         "chatterbox_installed": _chatterbox_available(),
+        "indic_parler_installed": _indic_available(),
         "piper_installed": _piper_available(),
         "piper_voices": len(list_piper_voices()),
         "cloning_supported": BACKEND == "chatterbox",
-        "error": _chatterbox_error,
+        "multilingual": BACKEND in ("chatterbox", "indic_parler"),
+        "indic_languages": len(INDIC_LANGUAGES) if BACKEND == "indic_parler" else 0,
+        "error": _chatterbox_error if BACKEND == "chatterbox" else (_indic_error if BACKEND == "indic_parler" else None),
     }
 
 
@@ -109,10 +167,34 @@ def _load_chatterbox():
         logger.error(f"Chatterbox load failed: {_chatterbox_error}")
 
 
+def _load_indic():
+    global _indic, _indic_error
+    if _indic is not None or _indic_error is not None:
+        return
+    try:
+        from parler_tts import ParlerTTSForConditionalGeneration
+        from transformers import AutoTokenizer
+        logger.info(f"Loading Indic Parler-TTS ({INDIC_PARLER_MODEL}) on {INDIC_PARLER_DEVICE}…")
+        model = ParlerTTSForConditionalGeneration.from_pretrained(INDIC_PARLER_MODEL).to(INDIC_PARLER_DEVICE)
+        prompt_tok = AutoTokenizer.from_pretrained(INDIC_PARLER_MODEL)
+        desc_tok = AutoTokenizer.from_pretrained(model.config.text_encoder._name_or_path)
+        _indic = (model, prompt_tok, desc_tok)
+        logger.info("Indic Parler-TTS ready")
+    except Exception as e:
+        _indic_error = f"{type(e).__name__}: {e}"
+        logger.error(f"Indic Parler-TTS load failed: {_indic_error}")
+
+
 def _wav_bytes_from_tensor(wav_tensor, sample_rate: int) -> bytes:
     import numpy as np
     data = wav_tensor.squeeze().cpu().numpy()
-    pcm = (np.clip(data, -1.0, 1.0) * 32767).astype("<i2")
+    return _wav_bytes_from_array(data, sample_rate)
+
+
+def _wav_bytes_from_array(data, sample_rate: int) -> bytes:
+    import numpy as np
+    arr = np.asarray(data).squeeze()
+    pcm = (np.clip(arr, -1.0, 1.0) * 32767).astype("<i2")
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)
@@ -135,6 +217,31 @@ def _synthesize_chatterbox(text: str, voice: str, speed: float, clone_sample: st
         kwargs["cfg_weight"] = preset["cfg_weight"]
     wav = _chatterbox.generate(text, **kwargs)
     return _wav_bytes_from_tensor(wav, _chatterbox.sr)
+
+
+def _synthesize_indic_parler(text: str, voice: str, language: str) -> bytes:
+    _load_indic()
+    if _indic is None:
+        raise RuntimeError(_indic_error or "Indic Parler-TTS not loaded")
+    model, prompt_tok, desc_tok = _indic
+    preset = next((p for p in INDIC_PARLER_PRESETS if p["id"] == voice), INDIC_PARLER_PRESETS[0])
+    description = preset["description"]
+    # Language is inferred from the script; naming it nudges the model when the
+    # caller selected one explicitly (e.g. transliterated input).
+    lang_name = next((l["name"] for l in INDIC_LANGUAGES if l["code"] == language), None)
+    if lang_name:
+        description = f"{description} The speaker speaks in {lang_name}."
+
+    desc_ids = desc_tok(description, return_tensors="pt").to(INDIC_PARLER_DEVICE)
+    prompt_ids = prompt_tok(text, return_tensors="pt").to(INDIC_PARLER_DEVICE)
+    generation = model.generate(
+        input_ids=desc_ids.input_ids,
+        attention_mask=desc_ids.attention_mask,
+        prompt_input_ids=prompt_ids.input_ids,
+        prompt_attention_mask=prompt_ids.attention_mask,
+    )
+    audio = generation.cpu().numpy().squeeze()
+    return _wav_bytes_from_array(audio, model.config.sampling_rate)
 
 
 def _synthesize_piper(text: str, voice: str, speed: float) -> bytes:
@@ -161,19 +268,24 @@ def _synthesize_piper(text: str, voice: str, speed: float) -> bytes:
     return buf.getvalue()
 
 
-def _synthesize_sync(text: str, voice: str, speed: float, clone_sample: str | None) -> bytes:
+def _synthesize_sync(text: str, voice: str, speed: float, clone_sample: str | None,
+                     language: str = "auto") -> bytes:
     if BACKEND == "chatterbox":
         return _synthesize_chatterbox(text, voice, speed, clone_sample)
+    if BACKEND == "indic_parler":
+        if clone_sample:
+            raise RuntimeError("Voice cloning requires the Chatterbox engine; Indic Parler-TTS is description-controlled.")
+        return _synthesize_indic_parler(text, voice, language)
     if clone_sample:
         raise RuntimeError("Voice cloning requires the Chatterbox engine (set TTS_ENGINE=chatterbox on a GPU host)")
     return _synthesize_piper(text, voice, speed)
 
 
 async def synthesize(text: str, voice: str = "studio", speed: float = 1.0,
-                     clone_sample: str | Path | None = None) -> bytes:
+                     clone_sample: str | Path | None = None, language: str = "auto") -> bytes:
     """Synthesize speech, returning WAV bytes. Runs in a worker thread."""
     sample = str(clone_sample) if clone_sample else None
-    return await asyncio.to_thread(_synthesize_sync, text, voice, speed, sample)
+    return await asyncio.to_thread(_synthesize_sync, text, voice, speed, sample, language)
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -181,8 +293,9 @@ def _split_sentences(text: str) -> list[str]:
 
     Merges short fragments so each chunk is ≥60 chars — avoids per-call
     overhead on single words while keeping latency per chunk under ~1s.
+    Splits on Latin (.!?;) and Devanagari/Indic danda (।॥) sentence marks.
     """
-    raw = re.split(r'(?<=[.!?;])\s+', text.strip())
+    raw = re.split(r'(?<=[.!?;।॥])\s+', text.strip())
     chunks: list[str] = []
     buf = ""
     for part in raw:
@@ -199,7 +312,7 @@ def _split_sentences(text: str) -> list[str]:
 
 
 async def synthesize_stream(text: str, voice: str = "studio", speed: float = 1.0,
-                             clone_sample: str | Path | None = None):
+                             clone_sample: str | Path | None = None, language: str = "auto"):
     """Async generator: yields one complete WAV bytes object per sentence chunk.
 
     Callers can start playing the first chunk in ~300 ms instead of waiting
@@ -207,5 +320,5 @@ async def synthesize_stream(text: str, voice: str = "studio", speed: float = 1.0
     """
     sample = str(clone_sample) if clone_sample else None
     for chunk in _split_sentences(text):
-        wav = await asyncio.to_thread(_synthesize_sync, chunk, voice, speed, sample)
+        wav = await asyncio.to_thread(_synthesize_sync, chunk, voice, speed, sample, language)
         yield wav

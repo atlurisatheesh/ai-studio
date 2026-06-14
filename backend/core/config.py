@@ -49,10 +49,15 @@ WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "auto")          # auto | cpu 
 WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "default")     # default | int8 | float16 ...
 
 # --- Text-to-speech ---
-# chatterbox = highest quality + zero-shot voice cloning (GPU recommended)
-# piper      = fast CPU fallback, no cloning
-TTS_ENGINE = os.environ.get("TTS_ENGINE", "auto")                  # auto | chatterbox | piper
+# chatterbox   = highest quality + zero-shot voice cloning (23 langs incl. Hindi), GPU
+# indic_parler = AI4Bharat Indic Parler-TTS, 21 langs incl. all major Indian
+#                languages (Tamil/Telugu/Bengali/…), Apache-2.0, GPU. Gated model:
+#                accept terms at hf.co/ai4bharat/indic-parler-tts and set HF_TOKEN.
+# piper        = fast CPU fallback, no cloning, English-led
+TTS_ENGINE = os.environ.get("TTS_ENGINE", "auto")                  # auto | chatterbox | indic_parler | piper
 CHATTERBOX_DEVICE = os.environ.get("CHATTERBOX_DEVICE", "cuda")
+INDIC_PARLER_DEVICE = os.environ.get("INDIC_PARLER_DEVICE", "cuda")
+INDIC_PARLER_MODEL = os.environ.get("INDIC_PARLER_MODEL", "ai4bharat/indic-parler-tts")
 PIPER_VOICES_DIR = Path(os.environ.get("PIPER_VOICES_DIR", DATA_DIR / "piper_voices"))
 
 # --- LLM backend: ollama (local, default) or grok (xAI cloud) ---

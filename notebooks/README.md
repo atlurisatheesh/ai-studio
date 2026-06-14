@@ -11,9 +11,11 @@ output — **without training anything**. Runs on a free Colab or Kaggle T4 (16G
    pick `arcvox_gpu_verify.ipynb`. (Or upload to a Kaggle Notebook.)
 2. **Runtime → Change runtime type → GPU** (Colab) / enable the GPU accelerator (Kaggle).
 3. Run the cells top to bottom. You'll produce:
-   - `arcvox_tts.wav` — base Chatterbox voice
+   - `arcvox_tts.wav` / `arcvox_hindi_cb.wav` — Chatterbox English + Hindi
    - `arcvox_clone.wav` — your uploaded voice, zero-shot cloned
-   - a Whisper `large-v3` transcript of that audio
+   - `tamil.wav` / `telugu.wav` / `hindi.wav` — **Indian languages** via AI4Bharat
+     Indic Parler-TTS (Apache-2.0; gated — paste an HF token when prompted)
+   - Whisper `large-v3` transcripts of all of the above (incl. Indian languages)
    - an `.mp4` talking-head of your portrait lip-syncing the audio (SadTalker)
 
 ### Why there's no training step

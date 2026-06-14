@@ -9,6 +9,8 @@ export default function TTSStudio() {
   const [speed, setSpeed] = useState(1.0);
   const [voices, setVoices] = useState([]);
   const [engine, setEngine] = useState("");
+  const [languages, setLanguages] = useState([]);
+  const [language, setLanguage] = useState("auto");
   const [audio, setAudio] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -20,6 +22,7 @@ export default function TTSStudio() {
       const system = r.data.system || [];
       setVoices([...system, ...cloned]);
       setEngine(r.data.engine || "");
+      setLanguages(r.data.languages || []);
       if (system.length && !system.some((v) => v.id === "studio")) setVoice(system[0].id);
     }).catch(() => {});
   }, []);
@@ -29,7 +32,7 @@ export default function TTSStudio() {
     setLoading(true);
     setAudio(null);
     try {
-      const { data } = await api.post("/voice/tts", { text, voice, speed });
+      const { data } = await api.post("/voice/tts", { text, voice, speed, language });
       setAudio(`data:audio/wav;base64,${data.audio_base64}`);
       toast.success("Voice generated");
     } catch (err) {
@@ -73,6 +76,26 @@ export default function TTSStudio() {
               <div className="input-box pointer-events-none">{text.length}</div>
             </div>
           </div>
+
+          {languages.length > 0 && (
+            <div className="mt-6">
+              <div className="mono-label mb-2">LANGUAGE <span className="text-studio-red">· {languages.length} INDIAN + GLOBAL</span></div>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className="input-box"
+                data-testid="tts-language-select"
+              >
+                <option value="auto">Auto-detect from script</option>
+                {languages.map((l) => (
+                  <option key={l.code} value={l.code}>{l.name}</option>
+                ))}
+              </select>
+              <div className="mono-label text-studio-dim mt-2 normal-case tracking-normal">
+                Type in the native script (e.g. தமிழ், తెలుగు, हिन्दी) — the engine speaks it.
+              </div>
+            </div>
+          )}
 
           <button onClick={generate} disabled={loading || !text.trim()} className="btn-accent mt-8 disabled:opacity-50" data-testid="tts-generate-btn">
             <SpeakerHigh size={18} /> {loading ? "Generating…" : "Generate Voice"}

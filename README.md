@@ -15,7 +15,7 @@ and `GET /api/engines/status` reports it honestly (`cloud_llm_active`).
 
 | Module | Engine | Privacy | License | Runs on |
 |---|---|---|---|---|
-| Voice / TTS | [Chatterbox](https://github.com/resemble-ai/chatterbox) (HD) or [Piper](https://github.com/rhasspy/piper) (fast) | always local | MIT | GPU / CPU |
+| Voice / TTS | [Chatterbox](https://github.com/resemble-ai/chatterbox) (HD, 23 langs) · [Indic Parler-TTS](https://hf.co/ai4bharat/indic-parler-tts) (21 langs incl. Tamil/Telugu/Hindi/Bengali/…) · [Piper](https://github.com/rhasspy/piper) (fast CPU) | always local | MIT / Apache-2.0 | GPU / CPU |
 | Voice Cloning | Chatterbox zero-shot (10–30s sample) | always local | MIT | GPU |
 | Transcription | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (up to large-v3) | always local | MIT | CPU / GPU |
 | Script / Translate / Voice Agent | [Ollama](https://ollama.com) (local) **or** Grok/xAI (cloud, opt-in) | local by default | varies | CPU / GPU / cloud |
@@ -41,6 +41,7 @@ API stays up and reports exactly what's missing at `GET /api/engines/status`
 
 - **Transcription:** Whisper `large-v3` matches or beats commercial APIs. This is your strongest module.
 - **TTS / cloning:** Chatterbox is near-ElevenLabs quality; Piper (CPU) is good but clearly synthetic.
+- **Indian languages:** set `TTS_ENGINE=indic_parler` for AI4Bharat's Indic Parler-TTS — Hindi, Tamil, Telugu, Bengali, Gujarati, Kannada, Malayalam, Marathi, Punjabi, Odia, Assamese, Urdu and more (Apache-2.0). Transcription of Indian languages already works via Whisper `large-v3`. The TTS Studio shows a language picker when an Indic engine is active.
 - **Avatars:** SadTalker/MuseTalk are solid but **behind HeyGen** — the open-source gap is real here. What you win instead: unlimited renders, zero per-minute fees, total privacy.
 
 ## Quick start (development)
