@@ -54,7 +54,7 @@ WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "default")     # default | i
 #                languages (Tamil/Telugu/Bengali/…), Apache-2.0, GPU. Gated model:
 #                accept terms at hf.co/ai4bharat/indic-parler-tts and set HF_TOKEN.
 # piper        = fast CPU fallback, no cloning, English-led
-TTS_ENGINE = os.environ.get("TTS_ENGINE", "auto")                  # auto | chatterbox | indic_parler | piper
+TTS_ENGINE = os.environ.get("TTS_ENGINE", "auto")                  # auto | chatterbox | indic_parler | multi | piper
 CHATTERBOX_DEVICE = os.environ.get("CHATTERBOX_DEVICE", "cuda")
 INDIC_PARLER_DEVICE = os.environ.get("INDIC_PARLER_DEVICE", "cuda")
 INDIC_PARLER_MODEL = os.environ.get("INDIC_PARLER_MODEL", "ai4bharat/indic-parler-tts")

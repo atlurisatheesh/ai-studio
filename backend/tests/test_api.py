@@ -266,6 +266,21 @@ def test_tts_stream(client, auth_headers):
         assert decoded[:4] == b"RIFF"
 
 
+def test_script_detection_and_routing():
+    """Pure-function test of the multi-engine script router (no GPU needed)."""
+    from engines import tts
+    # Indic script detection
+    assert tts.text_is_indic("வணக்கம் இது தமிழ் மொழி") is True      # Tamil
+    assert tts.text_is_indic("నమస్తే ఇది తెలుగు భాష") is True       # Telugu
+    assert tts.text_is_indic("नमस्ते यह हिन्दी है") is True          # Hindi
+    assert tts.text_is_indic("Hello, this is plain English.") is False
+    # Per-request routing used in TTS_ENGINE=multi mode
+    assert tts._route_backend("வணக்கம்", None, "auto") == "indic_parler"      # Tamil script
+    assert tts._route_backend("Hello world", None, "ta") == "indic_parler"    # explicit lang forces it
+    assert tts._route_backend("வணக்கம்", "/tmp/s.wav", "auto") == "chatterbox"  # cloning forces Chatterbox
+    assert tts._route_backend("Hello world", None, "auto") in ("chatterbox", "piper")
+
+
 def test_asset_path_traversal_blocked(client):
     assert client.get("/api/assets/..%2F..%2Fetc%2Fpasswd").status_code == 404
     assert client.get("/api/assets/nonexistent.mp4").status_code == 404

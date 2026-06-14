@@ -77,9 +77,41 @@ _piper_voices: dict[str, object] = {}
 _indic = None  # (model, prompt_tokenizer, description_tokenizer)
 _indic_error: str | None = None
 
+# Unicode blocks for the scripts Indic Parler-TTS handles. Text written in any
+# of these routes to Indic Parler in "multi" mode; everything else (Latin, etc.)
+# routes to Chatterbox. Urdu/Kashmiri/Sindhi use the Arabic block.
+_INDIC_UNICODE_RANGES = [
+    (0x0900, 0x097F),  # Devanagari — Hindi, Marathi, Sanskrit, Nepali
+    (0x0980, 0x09FF),  # Bengali — Bengali, Assamese
+    (0x0A00, 0x0A7F),  # Gurmukhi — Punjabi
+    (0x0A80, 0x0AFF),  # Gujarati
+    (0x0B00, 0x0B7F),  # Odia
+    (0x0B80, 0x0BFF),  # Tamil
+    (0x0C00, 0x0C7F),  # Telugu
+    (0x0C80, 0x0CFF),  # Kannada
+    (0x0D00, 0x0D7F),  # Malayalam
+    (0x0600, 0x06FF),  # Arabic — Urdu, Kashmiri, Sindhi
+]
+# Non-English Indic language codes — selecting one in the UI forces Indic routing.
+_INDIC_LANG_CODES = {l["code"] for l in INDIC_LANGUAGES if l["code"] != "en"}
+
+
+def _is_indic_char(ch: str) -> bool:
+    o = ord(ch)
+    return any(lo <= o <= hi for lo, hi in _INDIC_UNICODE_RANGES)
+
+
+def text_is_indic(text: str, threshold: float = 0.3) -> bool:
+    """True if a meaningful share of the text's letters are in an Indic script."""
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return False
+    indic = sum(1 for c in letters if _is_indic_char(c))
+    return (indic / len(letters)) >= threshold
+
 
 def _detect_backend() -> str:
-    if TTS_ENGINE in ("chatterbox", "piper", "indic_parler"):
+    if TTS_ENGINE in ("chatterbox", "piper", "indic_parler", "multi"):
         return TTS_ENGINE
     try:
         import chatterbox  # noqa: F401
@@ -125,7 +157,10 @@ def list_piper_voices() -> list[dict]:
 
 
 def system_voices() -> list[dict]:
-    if BACKEND == "chatterbox":
+    # In "multi" mode the Chatterbox presets are the default; routed Indic calls
+    # map any unknown voice id to their closest preset, and the shared ids
+    # (studio, calm) work in both engines.
+    if BACKEND in ("chatterbox", "multi"):
         return [{k: v for k, v in p.items() if k in ("id", "name", "gender", "tags")} for p in CHATTERBOX_PRESETS]
     if BACKEND == "indic_parler":
         return [{k: v for k, v in p.items() if k in ("id", "name", "gender", "tags")} for p in INDIC_PARLER_PRESETS]
@@ -134,7 +169,7 @@ def system_voices() -> list[dict]:
 
 def supported_languages() -> list[dict]:
     """Languages the active backend can speak (for the UI language picker)."""
-    if BACKEND == "indic_parler":
+    if BACKEND in ("indic_parler", "multi"):
         return INDIC_LANGUAGES
     return []
 
@@ -146,9 +181,10 @@ def status() -> dict:
         "indic_parler_installed": _indic_available(),
         "piper_installed": _piper_available(),
         "piper_voices": len(list_piper_voices()),
-        "cloning_supported": BACKEND == "chatterbox",
-        "multilingual": BACKEND in ("chatterbox", "indic_parler"),
-        "indic_languages": len(INDIC_LANGUAGES) if BACKEND == "indic_parler" else 0,
+        "cloning_supported": BACKEND in ("chatterbox", "multi"),
+        "multilingual": BACKEND in ("chatterbox", "indic_parler", "multi"),
+        "auto_routing": BACKEND == "multi",
+        "indic_languages": len(INDIC_LANGUAGES) if BACKEND in ("indic_parler", "multi") else 0,
         "error": _chatterbox_error if BACKEND == "chatterbox" else (_indic_error if BACKEND == "indic_parler" else None),
     }
 
@@ -268,11 +304,27 @@ def _synthesize_piper(text: str, voice: str, speed: float) -> bytes:
     return buf.getvalue()
 
 
+def _route_backend(text: str, clone_sample: str | None, language: str) -> str:
+    """Pick an engine per-request in 'multi' mode.
+
+    - Cloning always → Chatterbox (Indic Parler can't clone).
+    - An explicitly selected Indian language, or text written in an Indic
+      script → Indic Parler.
+    - Otherwise → Chatterbox if available, else Piper.
+    """
+    if clone_sample:
+        return "chatterbox"
+    if language in _INDIC_LANG_CODES or text_is_indic(text):
+        return "indic_parler"
+    return "chatterbox" if _chatterbox_available() else "piper"
+
+
 def _synthesize_sync(text: str, voice: str, speed: float, clone_sample: str | None,
                      language: str = "auto") -> bytes:
-    if BACKEND == "chatterbox":
+    backend = _route_backend(text, clone_sample, language) if BACKEND == "multi" else BACKEND
+    if backend == "chatterbox":
         return _synthesize_chatterbox(text, voice, speed, clone_sample)
-    if BACKEND == "indic_parler":
+    if backend == "indic_parler":
         if clone_sample:
             raise RuntimeError("Voice cloning requires the Chatterbox engine; Indic Parler-TTS is description-controlled.")
         return _synthesize_indic_parler(text, voice, language)
