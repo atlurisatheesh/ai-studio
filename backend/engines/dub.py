@@ -221,6 +221,41 @@ async def run_job(job_id: str, user_id: str, source_path: str, source_is_video: 
         await _set(job_id, status="failed", error=str(e)[:500], completed_at=now_iso())
 
 
+async def resume_incomplete() -> int:
+    """Re-dispatch dub jobs left mid-flight by a previous process.
+
+    Everything needed to re-run is persisted in `dub_jobs` (source file, target
+    language, voice), so a crash or restart no longer loses in-flight dubs — the
+    job is re-resolved and re-run from scratch on boot. Per-job error handling
+    keeps one un-resumable job (e.g. its source upload was cleaned up) from
+    blocking the others.
+    """
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT id, user_id, source_file, source_is_video, target_language, "
+        "target_language_code, voice FROM dub_jobs "
+        "WHERE status IN ('queued', 'processing', 'interrupted')"
+    )
+    rows = [dict(r) for r in await cur.fetchall()]
+    resumed = 0
+    for r in rows:
+        try:
+            from routers.voice import _resolve_clone  # lazy: avoid import cycle
+            clone_sample = await _resolve_clone(r["voice"], r["user_id"])
+            await _set(r["id"], status="queued", error=None)
+            asyncio.create_task(run_job(
+                r["id"], r["user_id"], r["source_file"], bool(r["source_is_video"]),
+                r["target_language"], r["target_language_code"], r["voice"], clone_sample))
+            resumed += 1
+        except Exception as e:
+            await _set(r["id"], status="failed",
+                       error=f"Could not resume after restart: {str(e)[:200]}",
+                       completed_at=now_iso())
+    if resumed:
+        logger.info("Resumed %d interrupted dub job(s)", resumed)
+    return resumed
+
+
 async def create_job(user_id: str, source_path: str, source_is_video: bool,
                      target_language: str, target_language_code: str, voice: str,
                      clone_sample: str | None) -> dict:

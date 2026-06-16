@@ -25,6 +25,7 @@ from core.security import hash_password, now_iso  # noqa: E402
 from core.ratelimit import RateLimitMiddleware  # noqa: E402
 from core.cleanup import cleanup_loop  # noqa: E402
 from routers import auth, voice, ai, avatar, projects, misc, dub  # noqa: E402
+from engines import avatar as avatar_engine, dub as dub_engine  # noqa: E402
 
 
 async def _seed_admin():
@@ -51,19 +52,28 @@ async def _seed_admin():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _seed_admin()
+    # Crash-resilient jobs: re-dispatch anything a previous process left
+    # mid-flight (jobs are persisted, so a restart no longer loses them).
+    try:
+        await avatar_engine.resume_incomplete()
+        await dub_engine.resume_incomplete()
+    except Exception:
+        logger.exception("Job resume on startup failed (continuing)")
     cleanup_task = asyncio.create_task(cleanup_loop())
     yield
     cleanup_task.cancel()
+    # Mark whatever is still running as interrupted so its state is honest if
+    # this box stays down; the next startup will resume these automatically.
     db = await get_db()
     await db.execute(
         "UPDATE avatar_jobs SET status = 'interrupted', "
-        "error = 'Server restarted while job was running. Please re-queue.', "
+        "error = 'Server restarted while job was running — resuming on next start.', "
         "completed_at = ? WHERE status IN ('queued', 'processing')",
         (now_iso(),),
     )
     await db.execute(
         "UPDATE dub_jobs SET status = 'interrupted', "
-        "error = 'Server restarted while job was running. Please re-queue.', "
+        "error = 'Server restarted while job was running — resuming on next start.', "
         "completed_at = ? WHERE status IN ('queued', 'processing')",
         (now_iso(),),
     )

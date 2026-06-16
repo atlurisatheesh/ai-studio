@@ -363,6 +363,55 @@ def test_dub_aligned_captions(client, auth_headers, monkeypatch):
     assert "hola" in vtt.text and "mundo" in vtt.text
 
 
+def test_dub_resume_after_restart(client, auth_headers, monkeypatch):
+    """A dub job left 'interrupted' by a crash is re-dispatched and finishes on boot.
+
+    Uses an isolated SQLite connection on its own loop so it doesn't disturb the
+    module-scoped TestClient's shared connection.
+    """
+    import asyncio
+    import aiosqlite
+    from core import db as dbmod
+    from core.config import DB_PATH
+
+    # Create + finish a real dub job through the app first.
+    r = client.post(
+        "/api/dub/generate",
+        data={"target_language": "Hindi", "target_language_code": "hi", "voice": "studio"},
+        files={"source": ("clip.wav", io.BytesIO(FAKE_WAV), "audio/wav")},
+        headers=auth_headers,
+    )
+    job_id = r.json()["id"]
+    assert _poll_dub_job(client, job_id, auth_headers)["status"] == "completed"
+
+    async def crash_and_resume():
+        conn = await aiosqlite.connect(DB_PATH)
+        conn.row_factory = aiosqlite.Row
+
+        async def fake_get_db():
+            return conn
+        monkeypatch.setattr(dbmod, "get_db", fake_get_db)
+
+        # Simulate a crash mid-flight.
+        await conn.execute("UPDATE dub_jobs SET status='interrupted' WHERE id=?", (job_id,))
+        await conn.commit()
+
+        n = await dub_engine.resume_incomplete()
+        final = "interrupted"
+        for _ in range(50):
+            cur = await conn.execute("SELECT status FROM dub_jobs WHERE id=?", (job_id,))
+            final = (await cur.fetchone())[0]
+            if final not in ("queued", "processing"):
+                break
+            await asyncio.sleep(0.1)
+        await conn.close()
+        return n, final
+
+    n, final = asyncio.run(crash_and_resume())
+    assert n == 1
+    assert final == "completed"
+
+
 def test_subtitles_formatting():
     from engines import subtitles
     segs = [

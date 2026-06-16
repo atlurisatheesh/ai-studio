@@ -176,6 +176,38 @@ async def run_job(job_id: str, user_id: str, script: str, voice: str,
         await _set(job_id, status="failed", error=str(e)[:500], completed_at=now_iso())
 
 
+async def resume_incomplete() -> int:
+    """Re-dispatch avatar jobs left mid-flight by a previous process.
+
+    Jobs are persisted in `avatar_jobs`, so a crash or restart no longer loses
+    them: on boot, anything still queued/processing/interrupted is re-resolved
+    and re-run from scratch (output generation is idempotent). Runs per-job so
+    one un-resumable job can't block the rest.
+    """
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT id, user_id, script, voice, image_path FROM avatar_jobs "
+        "WHERE status IN ('queued', 'processing', 'interrupted')"
+    )
+    rows = [dict(r) for r in await cur.fetchall()]
+    resumed = 0
+    for r in rows:
+        try:
+            from routers.voice import _resolve_clone  # lazy: avoid import cycle
+            clone_sample = await _resolve_clone(r["voice"], r["user_id"])
+            await _set(r["id"], status="queued", error=None)
+            asyncio.create_task(run_job(r["id"], r["user_id"], r["script"],
+                                        r["voice"], r["image_path"], clone_sample))
+            resumed += 1
+        except Exception as e:
+            await _set(r["id"], status="failed",
+                       error=f"Could not resume after restart: {str(e)[:200]}",
+                       completed_at=now_iso())
+    if resumed:
+        logger.info("Resumed %d interrupted avatar job(s)", resumed)
+    return resumed
+
+
 async def create_job(user_id: str, script: str, voice: str, image_path: str,
                      clone_sample: str | None) -> dict:
     job_id = str(uuid.uuid4())
