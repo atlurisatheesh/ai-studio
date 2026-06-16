@@ -426,7 +426,64 @@ Copy `.env.example` to `.env` and set at minimum `JWT_SECRET`. Full reference:
 
 ---
 
-## 12 · For the agent running this
+## 12 · Comparing against an older/local copy of the project
+
+If you (or another agent) have a pre-existing local copy of this project —
+e.g. `D:\ARC_VOX-main` (the `-main` suffix is the standard name Windows/GitHub
+gives a folder when you "Download ZIP" a repo's default branch) — and want to
+know exactly what differs from this branch, don't eyeball it. Run a real diff.
+
+**This sandbox cannot read your local filesystem** (`D:\...` paths don't
+exist outside your machine), so this has to run wherever the local copy
+lives — your machine, or an agent with filesystem access to it (Antigravity).
+
+```bash
+# 1. Clone a FRESH copy of this exact branch next to the old one.
+#    (Git Bash on Windows: D:\ maps to /d/)
+cd /d/
+git clone --branch claude/arc-vox-analysis-fpn183 --single-branch \
+  https://github.com/atlurisatheesh/ai-studio.git ai-studio-github
+
+# 2. List every file that's new, removed, or changed (names only — fast).
+diff -rq \
+  --exclude=.git --exclude=node_modules --exclude=__pycache__ \
+  --exclude=.venv --exclude=build --exclude=data --exclude=.pytest_cache \
+  /d/ARC_VOX-main /d/ai-studio-github | sort
+
+# 3. Full line-by-line diff for everything that changed (slower, saved to a file).
+diff -ru \
+  --exclude=.git --exclude=node_modules --exclude=__pycache__ \
+  --exclude=.venv --exclude=build --exclude=data --exclude=.pytest_cache \
+  /d/ARC_VOX-main /d/ai-studio-github > /d/arcvox_diff_full.txt
+```
+
+Reading the output of step 2:
+- `Only in /d/ARC_VOX-main: <path>` → exists in your old copy but not here (either you built something locally that never made it into this branch, or it was intentionally removed/renamed).
+- `Only in /d/ai-studio-github: <path>` → added on this branch since your local copy was made (cross-check against the commit list in §9 above).
+- `Files ... differ` → same file, different content — see the matching block in `arcvox_diff_full.txt` for the exact lines.
+
+No Git Bash available? PowerShell-only equivalent:
+
+```powershell
+cd D:\
+git clone --branch claude/arc-vox-analysis-fpn183 --single-branch https://github.com/atlurisatheesh/ai-studio.git ai-studio-github
+
+function Get-RelFiles($root) {
+  Get-ChildItem -Recurse -File $root |
+    Where-Object { $_.FullName -notmatch '\\(\.git|node_modules|__pycache__|\.venv|build|data|\.pytest_cache)\\' } |
+    ForEach-Object { $_.FullName.Substring($root.Length).TrimStart('\') }
+}
+Compare-Object (Get-RelFiles "D:\ARC_VOX-main") (Get-RelFiles "D:\ai-studio-github") | Sort-Object SideIndicator
+# <=  → only in ARC_VOX-main      =>  → only in ai-studio-github (added since)
+```
+
+The current branch's full feature/commit inventory is in §9 above — use it
+to tell intentional, documented changes apart from anything unexpected the
+diff turns up.
+
+---
+
+## 13 · For the agent running this
 
 **Your checklist:**
 
