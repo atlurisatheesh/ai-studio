@@ -15,6 +15,7 @@ import VoiceClone from "@/pages/VoiceClone";
 import VoiceAgent from "@/pages/VoiceAgent";
 import Translate from "@/pages/Translate";
 import ScriptStudio from "@/pages/ScriptStudio";
+import DubbingStudio from "@/pages/DubbingStudio";
 import ProjectsPage from "@/pages/ProjectsPage";
 
 function ProtectedRoute({ children }) {
@@ -60,6 +61,7 @@ function App() {
               <Route index element={<Dashboard />} />
               <Route path="voice" element={<TTSStudio />} />
               <Route path="avatar" element={<AvatarStudio />} />
+              <Route path="dub" element={<DubbingStudio />} />
               <Route path="clone" element={<VoiceClone />} />
               <Route path="transcribe" element={<Transcribe />} />
               <Route path="agent" element={<VoiceAgent />} />

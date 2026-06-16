@@ -12,6 +12,7 @@ import {
   TextT,
   ArrowUpRight,
   CircleNotch,
+  FilmSlate,
 } from "@phosphor-icons/react";
 
 const MODULES = [
@@ -19,6 +20,7 @@ const MODULES = [
   { Icon: Copy, label: "Voice Clone", desc: "Zero-shot cloning. Sample never leaves.", to: "/studio/clone", testid: "module-clone" },
   { Icon: Waveform, label: "Transcribe", desc: "Whisper large-v3, fully local.", to: "/studio/transcribe", testid: "module-transcribe" },
   { Icon: UserCircle, label: "AI Avatar", desc: "Your photo, lip-synced locally.", to: "/studio/avatar", testid: "module-avatar" },
+  { Icon: FilmSlate, label: "Dubbing", desc: "Translate + re-voice any clip, one pass.", to: "/studio/dub", testid: "module-dub" },
   { Icon: ChatTeardropDots, label: "Voice Agent", desc: "Local LLM chat + voice.", to: "/studio/agent", testid: "module-agent" },
   { Icon: TextT, label: "Script Writer", desc: "AI scripts, on-device LLM.", to: "/studio/script", testid: "module-script" },
   { Icon: TranslateIcon, label: "Translate", desc: "Private translation, tone preserved.", to: "/studio/translate", testid: "module-translate" },

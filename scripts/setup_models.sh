@@ -22,6 +22,15 @@ echo "── 2/4 Whisper (STT) ────────────────�
 echo "   Downloads automatically on first transcription."
 echo "   Max accuracy on GPU: set WHISPER_MODEL=large-v3 in .env"
 
+echo "── ffmpeg (required for video dubbing — audio dubbing works without it) ──"
+if command -v ffmpeg >/dev/null 2>&1; then
+  echo "   already installed"
+else
+  echo "   Not found. Install it: apt install ffmpeg  (or: brew install ffmpeg)"
+  echo "   Audio-file dubbing works without ffmpeg; video dubbing needs it to"
+  echo "   extract/replace the audio track."
+fi
+
 echo "── 3/4 Ollama LLM (scripts / translate / agent) ─────────────────────"
 if command -v ollama >/dev/null 2>&1; then
   ollama pull "${OLLAMA_MODEL:-llama3.1:8b}"

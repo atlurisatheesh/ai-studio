@@ -61,6 +61,27 @@ CREATE TABLE IF NOT EXISTS avatar_jobs (
     completed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_avatar_user ON avatar_jobs(user_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS dub_jobs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    source_file TEXT NOT NULL,
+    source_is_video INTEGER NOT NULL DEFAULT 0,
+    target_language TEXT NOT NULL,
+    target_language_code TEXT NOT NULL DEFAULT '',
+    voice TEXT NOT NULL,
+    status TEXT NOT NULL,
+    source_language TEXT,
+    transcript TEXT,
+    translated_text TEXT,
+    mode TEXT,
+    file TEXT,
+    url TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_dub_user ON dub_jobs(user_id, created_at DESC);
 """
 
 _db: aiosqlite.Connection | None = None

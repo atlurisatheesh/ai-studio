@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 
 from core.config import UPLOAD_DIR, OUTPUT_DIR, LLM_PROVIDER, GROK_MODEL
 from core.db import get_db
-from engines import stt, tts, llm, avatar
+from engines import stt, tts, llm, avatar, dub
 
 router = APIRouter(tags=["misc"])
 
@@ -54,6 +54,7 @@ async def engines_status():
         "tts": tts.status(),
         "llm": await llm.status(),
         "avatar": avatar.status(),
+        "dub": dub.status(),
         "llm_provider": LLM_PROVIDER,
         "cloud_llm_active": cloud_llm,
         "privacy": privacy,

@@ -20,7 +20,10 @@ and `GET /api/engines/status` reports it honestly (`cloud_llm_active`).
 | Transcription | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (up to large-v3) | always local | MIT | CPU / GPU |
 | Script / Translate / Voice Agent | [Ollama](https://ollama.com) (local) **or** Grok/xAI (cloud, opt-in) | local by default | varies | CPU / GPU / cloud |
 | AI Avatar | [SadTalker](https://github.com/OpenTalker/SadTalker) / [MuseTalk](https://github.com/TMElyralab/MuseTalk) / [EchoMimic](https://github.com/BadToBest/EchoMimic) / [LivePortrait](https://github.com/KwaiVision/LivePortrait) lipsync of **your own photo** | always local | check repo | GPU 8–24GB |
+| Dubbing | Transcribe (Whisper) → Translate (LLM) → Re-voice (TTS) → mux or lip-resync (MuseTalk), one pipeline | local by default* | — | CPU / GPU |
 | Project Library | SQLite — one file on your disk | always local | — | anywhere |
+
+\* Dubbing's translation step uses whichever LLM you've configured — same disclosed cloud exception as Script/Translate/Agent above.
 
 Every module degrades gracefully: with no GPU and no models installed the
 API stays up and reports exactly what's missing at `GET /api/engines/status`
@@ -44,6 +47,7 @@ API stays up and reports exactly what's missing at `GET /api/engines/status`
 - **Indian languages:** set `TTS_ENGINE=indic_parler` for AI4Bharat's Indic Parler-TTS — Hindi, Tamil, Telugu, Bengali, Gujarati, Kannada, Malayalam, Marathi, Punjabi, Odia, Assamese, Urdu and more (Apache-2.0). Transcription of Indian languages already works via Whisper `large-v3`. The TTS Studio shows a language picker when an Indic engine is active.
 - **One deployment for both:** set `TTS_ENGINE=multi` and the studio auto-routes each request by the text's script — Indian scripts → Indic Parler-TTS, everything else → Chatterbox, and voice cloning always → Chatterbox. Mixed-language messages route per sentence. (Install both engines on a GPU host.)
 - **Avatars:** SadTalker/MuseTalk are solid but **behind HeyGen** — the open-source gap is real here. What you win instead: unlimited renders, zero per-minute fees, total privacy.
+- **Dubbing:** upload any audio or video clip and the **Dubbing Studio** (`/studio/dub`, `POST /api/dub/generate`) transcribes it, translates it, and re-synthesizes it in the target language — one pipeline instead of stitching Transcribe → Translate → TTS by hand. Audio files always work. Video files get the new audio muxed in by default; set `AVATAR_ENGINE=musetalk` to additionally re-sync mouth movement to the translated speech. Requires `ffmpeg` on the host for video (audio-only dubbing doesn't need it).
 
 ## Quick start (development)
 
@@ -94,6 +98,7 @@ Everything is set via `.env` (see `.env.example`). Key switches:
 - `TTS_ENGINE=chatterbox` — HD voices + cloning (after `pip install chatterbox-tts`)
 - `AVATAR_ENGINE=sadtalker` + `SADTALKER_DIR=…` — full lip-synced avatar videos
 - `OLLAMA_MODEL=qwen2.5:14b` — stronger translation/scripts if you have VRAM
+- `ffmpeg` (system package, not an env var) — required for **video** dubbing only; install via `apt install ffmpeg` / `brew install ffmpeg`
 
 ## Tests
 
@@ -108,6 +113,7 @@ HTTP/auth/storage stack on any machine.
 
 - **Phase 3 — cinematic text-to-video** (Wan 2.2 / LTX-Video): deferred —
   needs 48–80GB VRAM and is the weakest open-vs-commercial area today.
-- Streaming TTS for the voice agent; word-level timestamps UI for transcripts.
-- Replace landing-page stock images (currently hot-linked from the old
-  prototype's CDN) with own assets.
+- Real job queue (Arq/Celery) to replace the in-process `asyncio` queue —
+  jobs currently don't survive a restart.
+- Avatar-engine license audit before any commercial sale (SadTalker/MuseTalk/
+  EchoMimic/LivePortrait licenses need a one-time check per deployment).

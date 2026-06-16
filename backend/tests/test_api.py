@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pytest
 from fastapi.testclient import TestClient
 
-from engines import tts, stt, llm
+from engines import tts, stt, llm, dub as dub_engine
 from server import app
 
 FAKE_WAV = b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00" + b"\x00" * 20
@@ -73,7 +73,7 @@ def auth_headers(client):
 def test_root_and_engine_status(client):
     assert client.get("/api/").json()["self_hosted"] is True
     s = client.get("/api/engines/status").json()
-    assert {"stt", "tts", "llm", "avatar"} <= set(s)
+    assert {"stt", "tts", "llm", "avatar", "dub"} <= set(s)
     # privacy must be reported honestly
     assert "cloud_llm_active" in s and "llm_provider" in s and "privacy" in s
     # default test env uses local Ollama → not cloud
@@ -284,3 +284,88 @@ def test_script_detection_and_routing():
 def test_asset_path_traversal_blocked(client):
     assert client.get("/api/assets/..%2F..%2Fetc%2Fpasswd").status_code == 404
     assert client.get("/api/assets/nonexistent.mp4").status_code == 404
+
+
+def _poll_dub_job(client, job_id, headers):
+    import time
+    job = None
+    for _ in range(50):
+        job = client.get(f"/api/dub/jobs/{job_id}", headers=headers).json()
+        if job["status"] not in ("queued", "processing"):
+            break
+        time.sleep(0.1)
+    return job
+
+
+def test_dub_languages(client):
+    langs = client.get("/api/dub/languages").json()
+    codes = {l["code"] for l in langs}
+    assert {"hi", "ta", "te", "en", "es", "fr"} <= codes
+    # no duplicates between Indic + global lists
+    assert len(codes) == len(langs)
+
+
+def test_dub_audio_job(client, auth_headers):
+    """Translate + re-voice pipeline on a plain audio upload — no ffmpeg needed."""
+    r = client.post(
+        "/api/dub/generate",
+        data={"target_language": "Hindi", "target_language_code": "hi", "voice": "studio"},
+        files={"source": ("clip.wav", io.BytesIO(FAKE_WAV), "audio/wav")},
+        headers=auth_headers,
+    )
+    assert r.status_code == 200, r.text
+    job_id = r.json()["id"]
+    assert r.json()["status"] in ("queued", "processing")
+
+    job = _poll_dub_job(client, job_id, auth_headers)
+    assert job["status"] == "completed", job
+    assert job["mode"] == "audio"
+    assert job["url"]
+    assert job["transcript"] == "hello world"          # from mocked stt.transcribe
+    assert job["translated_text"] == "mocked output"   # from mocked llm.complete
+
+    jobs = client.get("/api/dub/jobs", headers=auth_headers).json()
+    assert any(j["id"] == job_id for j in jobs)
+
+
+def test_dub_video_job(client, auth_headers, monkeypatch):
+    """Video dubbing falls back to a plain audio mux when no lipsync engine is configured.
+
+    ffmpeg isn't installed in the test sandbox, so the ffmpeg-calling helpers
+    are mocked here — the rest of the pipeline (STT/LLM/TTS) uses the same
+    autouse mocks as every other test.
+    """
+    def fake_extract_audio(video_path, audio_out):
+        Path(audio_out).write_bytes(FAKE_WAV)
+
+    def fake_mux_audio(video_path, audio_path, video_out):
+        Path(video_out).write_bytes(b"FAKEMP4")
+
+    monkeypatch.setattr(dub_engine, "ffmpeg_available", lambda: True)
+    monkeypatch.setattr(dub_engine, "_extract_audio", fake_extract_audio)
+    monkeypatch.setattr(dub_engine, "_mux_audio", fake_mux_audio)
+
+    r = client.post(
+        "/api/dub/generate",
+        data={"target_language": "Tamil", "target_language_code": "ta", "voice": "studio"},
+        files={"source": ("clip.mp4", io.BytesIO(b"FAKE-VIDEO-BYTES"), "video/mp4")},
+        headers=auth_headers,
+    )
+    assert r.status_code == 200, r.text
+    job_id = r.json()["id"]
+
+    job = _poll_dub_job(client, job_id, auth_headers)
+    assert job["status"] == "completed", job
+    assert job["mode"] == "video_dub"  # no AVATAR_ENGINE=musetalk configured → mux fallback
+    assert job["file"].endswith(".mp4")
+    assert job["url"]
+
+
+def test_dub_rejects_bad_extension(client, auth_headers):
+    r = client.post(
+        "/api/dub/generate",
+        data={"target_language": "French", "voice": "studio"},
+        files={"source": ("evil.exe", io.BytesIO(b"MZ"), "application/x-msdownload")},
+        headers=auth_headers,
+    )
+    assert r.status_code == 400

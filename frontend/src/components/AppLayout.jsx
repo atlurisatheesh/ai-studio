@@ -15,6 +15,7 @@ import {
   Copy,
   ShieldCheck,
   CloudWarning,
+  FilmSlate,
 } from "@phosphor-icons/react";
 
 const NAV = [
@@ -23,6 +24,7 @@ const NAV = [
   { to: "/studio/clone", label: "Voice Clone", Icon: Copy, testid: "nav-clone" },
   { to: "/studio/transcribe", label: "Transcribe", Icon: Waveform, testid: "nav-transcribe" },
   { to: "/studio/avatar", label: "AI Avatar", Icon: UserCircle, testid: "nav-avatar" },
+  { to: "/studio/dub", label: "Dubbing", Icon: FilmSlate, testid: "nav-dub" },
   { to: "/studio/agent", label: "Voice Agent", Icon: ChatTeardropDots, testid: "nav-agent" },
   { to: "/studio/script", label: "Script Writer", Icon: TextT, testid: "nav-script" },
   { to: "/studio/translate", label: "Translate", Icon: TranslateIcon, testid: "nav-translate" },

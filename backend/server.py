@@ -24,7 +24,7 @@ from core.db import get_db, close_db  # noqa: E402
 from core.security import hash_password, now_iso  # noqa: E402
 from core.ratelimit import RateLimitMiddleware  # noqa: E402
 from core.cleanup import cleanup_loop  # noqa: E402
-from routers import auth, voice, ai, avatar, projects, misc  # noqa: E402
+from routers import auth, voice, ai, avatar, projects, misc, dub  # noqa: E402
 
 
 async def _seed_admin():
@@ -61,6 +61,12 @@ async def lifespan(app: FastAPI):
         "completed_at = ? WHERE status IN ('queued', 'processing')",
         (now_iso(),),
     )
+    await db.execute(
+        "UPDATE dub_jobs SET status = 'interrupted', "
+        "error = 'Server restarted while job was running. Please re-queue.', "
+        "completed_at = ? WHERE status IN ('queued', 'processing')",
+        (now_iso(),),
+    )
     await db.commit()
     await close_db()
 
@@ -73,6 +79,7 @@ api_router.include_router(auth.router)      # /auth/*
 api_router.include_router(voice.router)     # /voice/*
 api_router.include_router(ai.router)        # /ai/*, /agent/*
 api_router.include_router(avatar.router)    # /avatar/*
+api_router.include_router(dub.router)       # /dub/* — translate + re-voice + lip-resync
 api_router.include_router(projects.router)  # /projects
 app.include_router(api_router)
 

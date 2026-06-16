@@ -5,7 +5,7 @@
 > next. **To resume in a new session:** point Claude at this file and say
 > *"read PROJECT_HANDOFF.md and continue."*
 >
-> **Last updated:** 2026-06-14 · **Branch:** `claude/arc-vox-analysis-fpn183`
+> **Last updated:** 2026-06-16 · **Branch:** `claude/arc-vox-analysis-fpn183`
 
 ---
 
@@ -18,14 +18,15 @@ customer audio, face, or transcript ever leaves the operator's server. The LLM i
 the one optional exception (Grok cloud), and the app flags it loudly when active.
 
 - **Built & working in code:** full Phase 1 (voice) + Phase 2 (avatar), streaming
-  TTS + LLM, Indian languages, privacy hardening, production guards. **14/14
-  backend tests pass; frontend builds clean.**
+  TTS + LLM, Indian languages, privacy hardening, production guards, and now an
+  **integrated dubbing pipeline** (transcribe → translate → re-voice → mux/lip-resync).
+  **18/18 backend tests pass; frontend builds clean.**
 - **The one big open item:** we have **never run the GPU models end-to-end** — all
   quality claims are still *unverified*. Two Colab/Kaggle notebooks were built to
   close this; **the user has not run them yet.** This is the #1 next action.
 - **This dev environment cannot verify it for us:** the sandbox network blocks
-  `huggingface.co` and `kaggle.com`, and has no GPU. Verification *must* happen on
-  the user's Google Colab / Kaggle.
+  `huggingface.co`, `kaggle.com`, and `api.x.ai`, and has no GPU or `ffmpeg`.
+  Verification *must* happen on the user's Google Colab / Kaggle, or a real host.
 
 ---
 
@@ -65,6 +66,7 @@ Avoid non-commercial models (e.g. XTTS-v2, MMS-TTS for production).
 | Transcription | faster-whisper `large-v3` | MIT | covers Indian languages |
 | Script / Translate / Voice Agent | Ollama (local) **or** Grok/xAI (cloud, opt-in) | varies | local by default |
 | AI Avatar | SadTalker · MuseTalk · EchoMimic · LivePortrait (lip-sync of the user's **own** photo) | check repo | GPU 8–24 GB |
+| Dubbing | Whisper → LLM translate → TTS re-voice → ffmpeg mux / MuseTalk lip-resync | — | CPU (audio) / GPU (video lip-resync) |
 | Project Library | SQLite (one file) | — | anywhere |
 
 ### Architecture
@@ -94,17 +96,19 @@ backend/
     stt.py               # faster-whisper (word timestamps)
     llm.py               # Ollama + Grok backends, blocking + streaming
     avatar.py            # SadTalker/MuseTalk/EchoMimic/LivePortrait subprocess drivers
+    dub.py                # transcribe → translate → re-voice → mux/lip-resync pipeline
   routers/
     voice.py             # /voice/tts, /voice/tts/stream (SSE), /transcribe, /clone, /library
     ai.py                # /ai/script, /ai/translate, /agent/chat, /agent/chat/stream (SSE)
     avatar.py            # /avatar/generate, /avatar/jobs
+    dub.py                # /dub/generate, /dub/jobs, /dub/languages
     auth.py projects.py misc.py
-  tests/test_api.py      # 14 tests, all engines mocked — runs without a GPU
+  tests/test_api.py      # 18 tests, all engines mocked — runs without a GPU
 ```
 
 ### Key frontend pages
 `Landing, Login, Signup, Dashboard, TTSStudio, VoiceClone, Transcribe,
-AvatarStudio, VoiceAgent, ScriptStudio, Translate, ProjectsPage`
+AvatarStudio, DubbingStudio, VoiceAgent, ScriptStudio, Translate, ProjectsPage`
 
 ---
 
@@ -122,6 +126,7 @@ AvatarStudio, VoiceAgent, ScriptStudio, Translate, ProjectsPage`
 10. **Indian languages** — AI4Bharat **Indic Parler-TTS** (Apache-2.0, 21 languages incl. Tamil/Telugu/Bengali/Hindi…); `TTS_ENGINE=indic_parler`; language picker in TTS Studio; Whisper already covers Indian-language STT.
 11. **Multi-engine auto-routing** — `TTS_ENGINE=multi` picks the engine **per request by the text's script**: Indic scripts → Indic Parler, else → Chatterbox, cloning → Chatterbox. Streaming routes each sentence independently.
 12. **Quick-listen notebook** — `arcvox_quicklisten.ipynb`: zero uploads, zero keys, "Run all" → hear an English + Hindi voice and a transcription. For non-technical verification.
+13. **Integrated dubbing pipeline** — `engines/dub.py` + `POST /api/dub/generate`: one upload (audio or video) runs transcribe (Whisper) → translate (the configured LLM) → re-voice (TTS, cloning-capable) → for video, mux the new audio in by default or, with `AVATAR_ENGINE=musetalk`, re-sync the mouth to the translated speech (MuseTalk drives lipsync from a video, which is exactly what a dub needs — falls back to a plain mux if that fails). New `dub_jobs` DB table, `Dubbing Studio` frontend page (`/studio/dub`), `/engines/status` reports a `dub` block (`ffmpeg_installed`, `lipsync_resync_available`). 4 new tests (audio job, video job w/ mux fallback, language list, bad-extension rejection) — 18/18 passing.
 
 ---
 
@@ -163,19 +168,29 @@ Sanskrit, Sindhi, Nepali (+ English).
 4. **Not fully production-hardened.** In-process `asyncio` job queue (jobs die on
    restart, no retry); SQLite is single-writer (won't scale past one process); no
    TLS story documented. Upload caps / rate limiting / cleanup are in place.
-5. **Missing commercial features:** integrated dubbing pipeline (translate +
-   re-voice + lip-sync as one flow), video timeline/multi-scene, caption burn-in,
-   programmatic API/SDK, team roles, **avatar-engine license audit** before sale.
+5. **Missing commercial features:** ~~integrated dubbing pipeline~~ (done — see
+   feature 13), video timeline/multi-scene, caption burn-in, programmatic API/SDK,
+   team roles, **avatar-engine license audit** before sale.
+6. **Dubbing's video path is also unverified.** The mux fallback only needs
+   `ffmpeg` (untested here — not installed in this sandbox); the MuseTalk
+   lip-resync path is wired but has never run (same GPU-verification gap as #1).
 
 ---
 
 ## 7 · Environment constraints (learned the hard way)
 
-- **This dev sandbox blocks `huggingface.co` AND `kaggle.com`** (network
-  allowlist; `x-deny-reason: host_not_allowed`) and has **no GPU**. → Claude
-  **cannot run or verify the GPU models from here**, with or without API keys.
+- **This dev sandbox blocks `huggingface.co`, `kaggle.com`, AND `api.x.ai`**
+  (network allowlist; `x-deny-reason: host_not_allowed`) and has **no GPU**. →
+  Claude **cannot run or verify the GPU models or Grok from here**, with or
+  without API keys. Confirmed again in this session: Ollama isn't reachable
+  either (nothing running on :11434), so the dub pipeline's translate step
+  fails cleanly here with a descriptive error — that's the expected, honest
+  degradation path, not a bug.
 - Font CDNs (`fonts.googleapis.com`, `api.fontshare.com`) are also blocked — which
   is *why* the frontend ships self-hosted system fonts.
+- **`ffmpeg` is not installed in this sandbox either.** Video dubbing's mux/
+  extract steps are therefore covered by mocks in the test suite, never by a
+  real `ffmpeg` invocation here. Audio-only dubbing has no such dependency.
 - **Verification happens on the user's side** (Colab/Kaggle). Don't burn time
   trying to make it work in-sandbox.
 
@@ -229,6 +244,7 @@ cd backend && .venv/bin/python -m pytest tests/ -v
 | No analytics/trackers/external fonts | A privacy product must not phone home |
 | Indic Parler-TTS for Indian langs | Apache-2.0, 21 languages, the authoritative Indian lab (AI4Bharat) |
 | `multi` routing by Unicode script | One deployment serves English + Indian without operator choosing |
+| Dubbing defaults to ffmpeg audio-mux, MuseTalk lip-resync optional | Reuses existing STT/LLM/TTS engines with zero new ML deps; works on any host, upgrades automatically when `AVATAR_ENGINE=musetalk` is configured |
 
 ---
 
@@ -241,9 +257,9 @@ cd backend && .venv/bin/python -m pytest tests/ -v
 3. **Decide:** is zero-shot clone fidelity enough, or do we add an optional
    per-voice **fine-tuning** tier (hours on a GPU — *not* base training)?
 4. **Security:** rotate the Grok and Kaggle keys that were pasted in chat.
-5. Future build backlog: real job queue (Arq/Celery) for avatar jobs; integrated
-   dubbing pipeline; avatar-engine license audit; revisit LongCat when its
-   inference path matures.
+5. Future build backlog: real job queue (Arq/Celery) for avatar + dub jobs;
+   avatar-engine license audit; revisit LongCat when its inference path
+   matures.
 
 ---
 
