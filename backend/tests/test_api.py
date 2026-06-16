@@ -472,3 +472,45 @@ def test_dub_rejects_bad_extension(client, auth_headers):
         headers=auth_headers,
     )
     assert r.status_code == 400
+
+
+def test_api_key_lifecycle(client, auth_headers):
+    """API keys let programmatic/bulk clients call authenticated endpoints
+    without a browser session — the missing piece for catalog-scale dubbing."""
+    r = client.post("/api/keys", json={"name": "bulk-dub-worker"}, headers=auth_headers)
+    assert r.status_code == 200, r.text
+    created = r.json()
+    plaintext_key = created["key"]
+    assert plaintext_key.startswith("ak_live_")
+    assert created["prefix"] in plaintext_key
+
+    key_headers = {"Authorization": f"Bearer {plaintext_key}"}
+
+    # the key authenticates exactly like a JWT bearer token, no extra plumbing
+    me = client.get("/api/auth/me", headers=key_headers)
+    assert me.status_code == 200
+    assert me.json()["email"] == "creator@example.com"
+
+    langs = client.get("/api/dub/languages", headers=key_headers)
+    assert langs.status_code == 200
+
+    listed = client.get("/api/keys", headers=auth_headers).json()
+    match = next(k for k in listed if k["id"] == created["id"])
+    assert match["revoked_at"] is None
+    assert "key" not in match and "key_hash" not in match  # plaintext/hash never re-exposed
+
+    revoke = client.delete(f"/api/keys/{created['id']}", headers=auth_headers)
+    assert revoke.status_code == 200
+
+    # a revoked key stops authenticating immediately
+    after_revoke = client.get("/api/auth/me", headers=key_headers)
+    assert after_revoke.status_code == 401
+
+    # revoking the same key twice is a clean 404, not a crash
+    again = client.delete(f"/api/keys/{created['id']}", headers=auth_headers)
+    assert again.status_code == 404
+
+
+def test_api_key_garbage_rejected(client):
+    r = client.get("/api/auth/me", headers={"Authorization": "Bearer ak_live_not_a_real_key"})
+    assert r.status_code == 401

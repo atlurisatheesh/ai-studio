@@ -48,6 +48,8 @@ API stays up and reports exactly what's missing at `GET /api/engines/status`
 - **One deployment for both:** set `TTS_ENGINE=multi` and the studio auto-routes each request by the text's script — Indian scripts → Indic Parler-TTS, everything else → Chatterbox, and voice cloning always → Chatterbox. Mixed-language messages route per sentence. (Install both engines on a GPU host.)
 - **Avatars:** SadTalker/MuseTalk are solid but **behind HeyGen** — the open-source gap is real here. What you win instead: unlimited renders, zero per-minute fees, total privacy.
 - **Dubbing:** upload any audio or video clip and the **Dubbing Studio** (`/studio/dub`, `POST /api/dub/generate`) transcribes it, translates it, and re-synthesizes it in the target language — one pipeline instead of stitching Transcribe → Translate → TTS by hand. It also emits **timed, downloadable captions** (`.srt`/`.vtt`) in both the original and target language, line-aligned to Whisper's segment timing. Audio files always work. Video files get the new audio muxed in by default; set `AVATAR_ENGINE=musetalk` to additionally re-sync mouth movement to the translated speech. Requires `ffmpeg` on the host for video (audio-only dubbing doesn't need it).
+- **Reliability:** dub/avatar jobs persist in SQLite and **auto-resume on restart** — a crash or redeploy no longer loses in-flight work.
+- **Programmatic access:** create an API key at `/studio/api-keys` (`POST /api/keys`) and call any endpoint with `Authorization: Bearer ak_live_...` — no browser session needed, for scripting bulk/catalog-scale jobs.
 
 ## Quick start (development)
 

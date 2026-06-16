@@ -24,7 +24,7 @@ from core.db import get_db, close_db  # noqa: E402
 from core.security import hash_password, now_iso  # noqa: E402
 from core.ratelimit import RateLimitMiddleware  # noqa: E402
 from core.cleanup import cleanup_loop  # noqa: E402
-from routers import auth, voice, ai, avatar, projects, misc, dub  # noqa: E402
+from routers import auth, voice, ai, avatar, projects, misc, dub, api_keys  # noqa: E402
 from engines import avatar as avatar_engine, dub as dub_engine  # noqa: E402
 
 
@@ -90,6 +90,7 @@ api_router.include_router(voice.router)     # /voice/*
 api_router.include_router(ai.router)        # /ai/*, /agent/*
 api_router.include_router(avatar.router)    # /avatar/*
 api_router.include_router(dub.router)       # /dub/* — translate + re-voice + lip-resync
+api_router.include_router(api_keys.router)  # /keys/* — programmatic API access
 api_router.include_router(projects.router)  # /projects
 app.include_router(api_router)
 

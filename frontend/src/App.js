@@ -17,6 +17,7 @@ import Translate from "@/pages/Translate";
 import ScriptStudio from "@/pages/ScriptStudio";
 import DubbingStudio from "@/pages/DubbingStudio";
 import ProjectsPage from "@/pages/ProjectsPage";
+import ApiKeysPage from "@/pages/ApiKeysPage";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -68,6 +69,7 @@ function App() {
               <Route path="translate" element={<Translate />} />
               <Route path="script" element={<ScriptStudio />} />
               <Route path="projects" element={<ProjectsPage />} />
+              <Route path="api-keys" element={<ApiKeysPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

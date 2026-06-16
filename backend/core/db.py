@@ -27,6 +27,17 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    prefix TEXT NOT NULL,
+    key_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT,
+    revoked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id, created_at DESC);
 CREATE TABLE IF NOT EXISTS cloned_voices (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,

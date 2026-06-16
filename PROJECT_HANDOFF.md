@@ -128,7 +128,8 @@ AvatarStudio, DubbingStudio, VoiceAgent, ScriptStudio, Translate, ProjectsPage`
 12. **Quick-listen notebook** — `arcvox_quicklisten.ipynb`: zero uploads, zero keys, "Run all" → hear an English + Hindi voice and a transcription. For non-technical verification.
 13. **Integrated dubbing pipeline** — `engines/dub.py` + `POST /api/dub/generate`: one upload (audio or video) runs transcribe (Whisper) → translate (the configured LLM) → re-voice (TTS, cloning-capable) → for video, mux the new audio in by default or, with `AVATAR_ENGINE=musetalk`, re-sync the mouth to the translated speech (MuseTalk drives lipsync from a video, which is exactly what a dub needs — falls back to a plain mux if that fails). New `dub_jobs` DB table, `Dubbing Studio` frontend page (`/studio/dub`), `/engines/status` reports a `dub` block (`ffmpeg_installed`, `lipsync_resync_available`).
 14. **Dubbing captions** — `engines/subtitles.py`: the dub pipeline now emits **timed `.srt`/`.vtt` captions** in both source and target language, downloadable from the studio. Translation is done **line-aligned per Whisper segment in one LLM call** (numbered `[n]` markers, parsed back, graceful fallback to whole-text translation if the model breaks alignment) so caption timing is preserved — the first step toward matching ElevenLabs Dubbing Studio. New `dub_jobs` columns (`source_srt_url`, `target_srt_url`, `target_vtt_url`) added via an idempotent boot migration.
-15. **Crash-resilient jobs** — `resume_incomplete()` in both `engines/dub.py` and `engines/avatar.py`: on startup the server re-dispatches any dub/avatar job a previous process left queued/processing/interrupted (everything needed to re-run is persisted), so jobs **survive a restart or crash** instead of being lost — the production-hardening gap that disqualified the high-volume self-hosted wedge. Per-job error isolation; re-resolves the cloned voice. **21/21 tests passing** (added a crash-and-resume test on an isolated DB connection). Still in-process `asyncio` (no Redis/Celery), consistent with the single-box SQLite design.
+15. **Crash-resilient jobs** — `resume_incomplete()` in both `engines/dub.py` and `engines/avatar.py`: on startup the server re-dispatches any dub/avatar job a previous process left queued/processing/interrupted (everything needed to re-run is persisted), so jobs **survive a restart or crash** instead of being lost — the production-hardening gap that disqualified the high-volume self-hosted wedge. Per-job error isolation; re-resolves the cloned voice. Still in-process `asyncio` (no Redis/Celery), consistent with the single-box SQLite design.
+16. **Programmatic API keys** — `core/security.py` + `routers/api_keys.py` (`POST/GET /api/keys`, `DELETE /api/keys/{id}`): bulk/catalog clients can now call any authenticated endpoint (including `/dub/generate`) with `Authorization: Bearer ak_live_...` instead of a browser session — the missing piece for high-volume self-hosted dubbing. Only a SHA-256 hash is stored; the plaintext key is shown exactly once at creation (GitHub/Stripe-style). `ApiKeysPage` frontend at `/studio/api-keys` (create/list/revoke). **23/23 tests passing** (added full key lifecycle + garbage-key rejection tests).
 
 ---
 
@@ -172,10 +173,11 @@ Sanskrit, Sindhi, Nepali (+ English).
    automatic retry-on-failure; SQLite is single-writer (won't scale past one
    process); no TLS story documented. Upload caps / rate limiting / cleanup are in place.
 5. **Missing commercial features:** ~~integrated dubbing pipeline~~ (done — feat. 13),
-   ~~caption files~~ (done — feat. 14, sidecar `.srt`/`.vtt`); still missing:
-   multi-speaker **diarization** in dubbing, caption **burn-in** to video,
-   video timeline/multi-scene, programmatic API/SDK, team roles,
-   **avatar-engine license audit** before sale.
+   ~~caption files~~ (done — feat. 14, sidecar `.srt`/`.vtt`), ~~programmatic API
+   keys~~ (done — feat. 16); still missing: multi-speaker **diarization** in
+   dubbing, caption **burn-in** to video, video timeline/multi-scene, a real SDK
+   wrapper around the API, team roles/workspaces, **avatar-engine license audit**
+   before sale.
 6. **Dubbing's video path is also unverified.** The mux fallback only needs
    `ffmpeg` (untested here — not installed in this sandbox); the MuseTalk
    lip-resync path is wired but has never run (same GPU-verification gap as #1).

@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   CloudWarning,
   FilmSlate,
+  Key,
 } from "@phosphor-icons/react";
 
 const NAV = [
@@ -29,6 +30,7 @@ const NAV = [
   { to: "/studio/script", label: "Script Writer", Icon: TextT, testid: "nav-script" },
   { to: "/studio/translate", label: "Translate", Icon: TranslateIcon, testid: "nav-translate" },
   { to: "/studio/projects", label: "Library", Icon: FolderSimple, testid: "nav-library" },
+  { to: "/studio/api-keys", label: "API Keys", Icon: Key, testid: "nav-api-keys" },
 ];
 
 export default function AppLayout() {
