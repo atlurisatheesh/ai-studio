@@ -126,7 +126,8 @@ AvatarStudio, DubbingStudio, VoiceAgent, ScriptStudio, Translate, ProjectsPage`
 10. **Indian languages** — AI4Bharat **Indic Parler-TTS** (Apache-2.0, 21 languages incl. Tamil/Telugu/Bengali/Hindi…); `TTS_ENGINE=indic_parler`; language picker in TTS Studio; Whisper already covers Indian-language STT.
 11. **Multi-engine auto-routing** — `TTS_ENGINE=multi` picks the engine **per request by the text's script**: Indic scripts → Indic Parler, else → Chatterbox, cloning → Chatterbox. Streaming routes each sentence independently.
 12. **Quick-listen notebook** — `arcvox_quicklisten.ipynb`: zero uploads, zero keys, "Run all" → hear an English + Hindi voice and a transcription. For non-technical verification.
-13. **Integrated dubbing pipeline** — `engines/dub.py` + `POST /api/dub/generate`: one upload (audio or video) runs transcribe (Whisper) → translate (the configured LLM) → re-voice (TTS, cloning-capable) → for video, mux the new audio in by default or, with `AVATAR_ENGINE=musetalk`, re-sync the mouth to the translated speech (MuseTalk drives lipsync from a video, which is exactly what a dub needs — falls back to a plain mux if that fails). New `dub_jobs` DB table, `Dubbing Studio` frontend page (`/studio/dub`), `/engines/status` reports a `dub` block (`ffmpeg_installed`, `lipsync_resync_available`). 4 new tests (audio job, video job w/ mux fallback, language list, bad-extension rejection) — 18/18 passing.
+13. **Integrated dubbing pipeline** — `engines/dub.py` + `POST /api/dub/generate`: one upload (audio or video) runs transcribe (Whisper) → translate (the configured LLM) → re-voice (TTS, cloning-capable) → for video, mux the new audio in by default or, with `AVATAR_ENGINE=musetalk`, re-sync the mouth to the translated speech (MuseTalk drives lipsync from a video, which is exactly what a dub needs — falls back to a plain mux if that fails). New `dub_jobs` DB table, `Dubbing Studio` frontend page (`/studio/dub`), `/engines/status` reports a `dub` block (`ffmpeg_installed`, `lipsync_resync_available`).
+14. **Dubbing captions** — `engines/subtitles.py`: the dub pipeline now emits **timed `.srt`/`.vtt` captions** in both source and target language, downloadable from the studio. Translation is done **line-aligned per Whisper segment in one LLM call** (numbered `[n]` markers, parsed back, graceful fallback to whole-text translation if the model breaks alignment) so caption timing is preserved — the first step toward matching ElevenLabs Dubbing Studio. New `dub_jobs` columns (`source_srt_url`, `target_srt_url`, `target_vtt_url`) added via an idempotent boot migration. **20/20 tests passing** (added line-aligned-caption job + pure subtitle-formatting unit tests).
 
 ---
 
@@ -168,9 +169,11 @@ Sanskrit, Sindhi, Nepali (+ English).
 4. **Not fully production-hardened.** In-process `asyncio` job queue (jobs die on
    restart, no retry); SQLite is single-writer (won't scale past one process); no
    TLS story documented. Upload caps / rate limiting / cleanup are in place.
-5. **Missing commercial features:** ~~integrated dubbing pipeline~~ (done — see
-   feature 13), video timeline/multi-scene, caption burn-in, programmatic API/SDK,
-   team roles, **avatar-engine license audit** before sale.
+5. **Missing commercial features:** ~~integrated dubbing pipeline~~ (done — feat. 13),
+   ~~caption files~~ (done — feat. 14, sidecar `.srt`/`.vtt`); still missing:
+   multi-speaker **diarization** in dubbing, caption **burn-in** to video,
+   video timeline/multi-scene, programmatic API/SDK, team roles,
+   **avatar-engine license audit** before sale.
 6. **Dubbing's video path is also unverified.** The mux fallback only needs
    `ffmpeg` (untested here — not installed in this sandbox); the MuseTalk
    lip-resync path is wired but has never run (same GPU-verification gap as #1).

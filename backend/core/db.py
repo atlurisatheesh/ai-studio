@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS dub_jobs (
     mode TEXT,
     file TEXT,
     url TEXT,
+    source_srt_url TEXT,
+    target_srt_url TEXT,
+    target_vtt_url TEXT,
     error TEXT,
     created_at TEXT NOT NULL,
     started_at TEXT,
@@ -83,6 +86,25 @@ CREATE TABLE IF NOT EXISTS dub_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_dub_user ON dub_jobs(user_id, created_at DESC);
 """
+
+# Columns added after the table first shipped — applied idempotently on every
+# boot so existing databases pick them up without a manual migration step.
+_ADDED_COLUMNS = {
+    "dub_jobs": [
+        ("source_srt_url", "TEXT"),
+        ("target_srt_url", "TEXT"),
+        ("target_vtt_url", "TEXT"),
+    ],
+}
+
+
+async def _migrate(db: aiosqlite.Connection):
+    for table, cols in _ADDED_COLUMNS.items():
+        cur = await db.execute(f"PRAGMA table_info({table})")
+        existing = {r[1] for r in await cur.fetchall()}
+        for name, decl in cols:
+            if name not in existing:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
 _db: aiosqlite.Connection | None = None
 
@@ -93,6 +115,7 @@ async def get_db() -> aiosqlite.Connection:
         _db = await aiosqlite.connect(DB_PATH)
         _db.row_factory = aiosqlite.Row
         await _db.executescript(SCHEMA)
+        await _migrate(_db)
         await _db.commit()
     return _db
 

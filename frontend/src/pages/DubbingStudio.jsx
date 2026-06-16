@@ -162,6 +162,22 @@ export default function DubbingStudio() {
               <div className="text-xs text-white whitespace-pre-wrap">{job.translated_text}</div>
             </div>
           )}
+          {job?.status === "completed" && (job.source_srt_url || job.target_srt_url) && (
+            <div className="mt-4 pt-4 border-t border-white/10" data-testid="dub-captions">
+              <div className="mono-label mb-2">CAPTIONS</div>
+              <div className="flex flex-wrap gap-2">
+                {job.target_srt_url && (
+                  <a href={assetUrl(job.target_srt_url)} download className="mono-label border border-white/15 hover:border-white px-2 py-1" data-testid="dub-caption-target-srt">TRANSLATED .SRT</a>
+                )}
+                {job.target_vtt_url && (
+                  <a href={assetUrl(job.target_vtt_url)} download className="mono-label border border-white/15 hover:border-white px-2 py-1" data-testid="dub-caption-target-vtt">TRANSLATED .VTT</a>
+                )}
+                {job.source_srt_url && (
+                  <a href={assetUrl(job.source_srt_url)} download className="mono-label border border-white/15 hover:border-white px-2 py-1" data-testid="dub-caption-source-srt">ORIGINAL .SRT</a>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

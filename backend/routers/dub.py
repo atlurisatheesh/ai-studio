@@ -75,7 +75,8 @@ async def dub_job_status(job_id: str, user: CurrentUser):
 async def dub_jobs(user: CurrentUser, limit: int = 30):
     db = await get_db()
     cur = await db.execute(
-        "SELECT id, target_language, voice, status, mode, file, url, error, created_at, completed_at "
+        "SELECT id, target_language, voice, status, mode, file, url, "
+        "source_srt_url, target_srt_url, target_vtt_url, error, created_at, completed_at "
         "FROM dub_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
         (user["id"], limit),
     )

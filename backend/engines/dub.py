@@ -26,7 +26,7 @@ from pathlib import Path
 from core.config import AVATAR_ENGINE, MUSETALK_DIR, AVATAR_PYTHON, OUTPUT_DIR, logger
 from core.db import get_db
 from core.security import now_iso, save_project
-from engines import tts, stt, llm
+from engines import tts, stt, llm, subtitles
 
 VIDEO_EXTS = {"mp4", "mov", "mkv", "webm", "avi"}
 
@@ -92,6 +92,48 @@ def _run_musetalk_resync(video_path: str, audio_path: str, work_dir: Path) -> Pa
     return results[-1]
 
 
+def _write_caption(name: str, content: str) -> str:
+    (OUTPUT_DIR / name).write_text(content, encoding="utf-8")
+    return f"/api/assets/{name}"
+
+
+async def _translate_aligned(segments: list[dict], source_text: str, target_language: str):
+    """Translate the transcript to the target language.
+
+    Tries a single line-aligned call so each caption keeps its original timing
+    (the Dubbing-Studio approach). Returns (full_text, translated_segments);
+    translated_segments is None when the model didn't return one line per
+    segment, in which case the caller emits source captions only.
+    """
+    if segments:
+        sys_msg = (
+            "You are an expert dubbing translator. Translate each numbered line "
+            "faithfully into the target language, natural to SPEAK ALOUD and close "
+            "to the original length/pacing. Keep the exact [n] markers, output one "
+            "translated line per input line, and nothing else."
+        )
+        prompt = f"Target language: {target_language}\n\n" + subtitles.build_numbered_prompt(segments)
+        raw = (await llm.complete(sys_msg, prompt, temperature=0.3)).strip()
+        lines = subtitles.parse_aligned_translation(raw, len(segments))
+        if lines is not None:
+            translated_segments = [
+                {"start": s.get("start", 0.0), "end": s.get("end", 0.0), "text": t}
+                for s, t in zip(segments, lines)
+            ]
+            return " ".join(lines).strip(), translated_segments
+
+    # fallback: translate the whole transcript at once (no aligned captions)
+    sys_msg = (
+        "You are an expert dubbing translator. Translate the given transcript "
+        "faithfully into the target language, keeping it natural to SPEAK ALOUD "
+        "and close to the original length and pacing so it can replace the "
+        "original narration. Output ONLY the translated text, no commentary."
+    )
+    prompt = f"Target language: {target_language}\n\nTranscript:\n{source_text}"
+    translated = (await llm.complete(sys_msg, prompt, temperature=0.3)).strip()
+    return translated, None
+
+
 async def run_job(job_id: str, user_id: str, source_path: str, source_is_video: bool,
                   target_language: str, target_language_code: str, voice: str,
                   clone_sample: str | None):
@@ -114,18 +156,27 @@ async def run_job(job_id: str, user_id: str, source_path: str, source_is_video: 
         source_text = (transcript.get("text") or "").strip()
         if not source_text:
             raise RuntimeError("No speech detected in the uploaded file.")
+        segments = transcript.get("segments") or []
         await _set(job_id, transcript=source_text, source_language=transcript.get("language"))
 
-        # 3. translate
-        sys_msg = (
-            "You are an expert dubbing translator. Translate the given transcript "
-            "faithfully into the target language, keeping it natural to SPEAK ALOUD "
-            "and close to the original length and pacing so it can replace the "
-            "original narration. Output ONLY the translated text, no commentary."
+        # 3. translate (line-aligned when we have timed segments)
+        translated, translated_segments = await _translate_aligned(
+            segments, source_text, target_language
         )
-        prompt = f"Target language: {target_language}\n\nTranscript:\n{source_text}"
-        translated = (await llm.complete(sys_msg, prompt, temperature=0.3)).strip()
         await _set(job_id, translated_text=translated)
+
+        # 3b. captions — timed, downloadable, editable, in source + target language
+        caption_fields = {}
+        if segments:
+            caption_fields["source_srt_url"] = _write_caption(
+                f"dub_{job_id}.src.srt", subtitles.to_srt(segments))
+        if translated_segments:
+            caption_fields["target_srt_url"] = _write_caption(
+                f"dub_{job_id}.srt", subtitles.to_srt(translated_segments))
+            caption_fields["target_vtt_url"] = _write_caption(
+                f"dub_{job_id}.vtt", subtitles.to_vtt(translated_segments))
+        if caption_fields:
+            await _set(job_id, **caption_fields)
 
         # 4. re-voice in the target language
         dub_audio_bytes = await tts.synthesize(

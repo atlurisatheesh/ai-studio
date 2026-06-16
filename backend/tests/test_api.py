@@ -36,7 +36,10 @@ def mock_engines(monkeypatch):
 
     async def fake_transcribe(path):
         return {"text": "hello world", "language": "en", "language_probability": 0.99,
-                "duration": 1.0, "segments": []}
+                "duration": 1.0, "segments": [
+                    {"start": 0.0, "end": 0.5, "text": "hello"},
+                    {"start": 0.5, "end": 1.0, "text": "world"},
+                ]}
 
     async def fake_chat(system, messages, temperature=0.7):
         return "mocked reply"
@@ -324,8 +327,59 @@ def test_dub_audio_job(client, auth_headers):
     assert job["transcript"] == "hello world"          # from mocked stt.transcribe
     assert job["translated_text"] == "mocked output"   # from mocked llm.complete
 
+    # source captions are always produced from Whisper's timed segments
+    assert job["source_srt_url"], job
+    srt = client.get("/api" + job["source_srt_url"].removeprefix("/api"), headers=auth_headers)
+    assert srt.status_code == 200
+    assert "00:00:00,000 --> 00:00:00,500" in srt.text
+    assert "hello" in srt.text
+
     jobs = client.get("/api/dub/jobs", headers=auth_headers).json()
     assert any(j["id"] == job_id for j in jobs)
+
+
+def test_dub_aligned_captions(client, auth_headers, monkeypatch):
+    """When the LLM returns one line per segment, timed target captions are emitted."""
+    async def fake_aligned(system, prompt, temperature=0.7):
+        # Mimic a translator that preserved the [n] markers
+        return "[1] hola\n[2] mundo"
+    monkeypatch.setattr(llm, "complete", fake_aligned)
+
+    r = client.post(
+        "/api/dub/generate",
+        data={"target_language": "Spanish", "target_language_code": "es", "voice": "studio"},
+        files={"source": ("clip.wav", io.BytesIO(FAKE_WAV), "audio/wav")},
+        headers=auth_headers,
+    )
+    assert r.status_code == 200, r.text
+    job = _poll_dub_job(client, r.json()["id"], auth_headers)
+    assert job["status"] == "completed", job
+    assert job["translated_text"] == "hola mundo"
+    assert job["target_srt_url"] and job["target_vtt_url"], job
+
+    vtt = client.get("/api" + job["target_vtt_url"].removeprefix("/api"), headers=auth_headers)
+    assert vtt.status_code == 200
+    assert vtt.text.startswith("WEBVTT")
+    assert "hola" in vtt.text and "mundo" in vtt.text
+
+
+def test_subtitles_formatting():
+    from engines import subtitles
+    segs = [
+        {"start": 0.0, "end": 1.25, "text": "first"},
+        {"start": 1.25, "end": 3.0, "text": "second"},
+    ]
+    srt = subtitles.to_srt(segs)
+    assert "1\n00:00:00,000 --> 00:00:01,250\nfirst" in srt
+    assert "2\n00:00:01,250 --> 00:00:03,000\nsecond" in srt
+
+    vtt = subtitles.to_vtt(segs)
+    assert vtt.startswith("WEBVTT")
+    assert "00:00:00.000 --> 00:00:01.250" in vtt
+
+    # aligned-translation parsing round-trips, and rejects a count mismatch
+    assert subtitles.parse_aligned_translation("[1] a\n[2] b", 2) == ["a", "b"]
+    assert subtitles.parse_aligned_translation("[1] a", 2) is None
 
 
 def test_dub_video_job(client, auth_headers, monkeypatch):
