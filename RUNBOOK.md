@@ -382,6 +382,12 @@ Copy `.env.example` to `.env` and set at minimum `JWT_SECRET`. Full reference:
 | 12 | Timed SRT/VTT captions | engines/subtitles.py, dub.py | `024f8d2` |
 | 13 | Crash-resilient jobs (auto-resume) | dub.py, avatar.py, server.py | `7e1cf97` |
 | 14 | Programmatic API keys | security.py, routers/api_keys.py, ApiKeysPage.jsx | `ed0c155` |
+| 15 | Multi-speaker diarization (speaker-labelled captions) | engines/diarize.py, dub.py | this branch |
+| 16 | Strategy docs: decision tree, go-to-market, fine-tuning | docs/ | this branch |
+
+> **Strategy & next-step guidance:** `docs/DECISION_TREE.md` (what to do after
+> you score the voice), `docs/GO_TO_MARKET.md` (who the first customer is),
+> `docs/FINETUNING.md` (the honest answer to "can we build our own?").
 
 ---
 
@@ -398,8 +404,11 @@ Copy `.env.example` to `.env` and set at minimum `JWT_SECRET`. Full reference:
 3. **Voice latency.** Chatterbox generates a full sentence at once (~1s first
    audio) vs ElevenLabs Flash (~75ms). Not yet addressed.
 
-4. **Dubbing is single-speaker.** No diarization — multi-speaker clips get
-   merged into one voice. Needs `pyannote-audio` (GPU + HF token).
+4. **Dubbing multi-speaker: partial.** Speaker diarization is now built
+   (`engines/diarize.py`, optional `pip install pyannote.audio` + HF token):
+   captions are labelled `[Speaker N]` and the job reports the speaker count.
+   Still single *voice* on re-synthesis — assigning a distinct voice per
+   speaker is the next increment.
 
 5. **No caption burn-in to video.** SRT/VTT sidecar files are generated but
    not burned into the video frame. Needs `ffmpeg` subtitle filter.
