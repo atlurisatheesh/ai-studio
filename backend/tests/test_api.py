@@ -431,6 +431,62 @@ def test_subtitles_formatting():
     assert subtitles.parse_aligned_translation("[1] a", 2) is None
 
 
+def test_diarize_pure():
+    """Speaker reconciliation is pure logic — no model, no GPU needed to verify."""
+    from engines import diarize
+    segs = [
+        {"start": 0.0, "end": 0.5, "text": "hello"},
+        {"start": 0.5, "end": 1.0, "text": "world"},
+    ]
+    turns = [
+        {"start": 0.0, "end": 0.5, "speaker": "SPEAKER_00"},
+        {"start": 0.5, "end": 1.0, "speaker": "SPEAKER_01"},
+    ]
+    tagged = diarize.assign_speakers(segs, turns)
+    assert [s["speaker"] for s in tagged] == ["SPEAKER_00", "SPEAKER_01"]
+    assert diarize.speaker_count(turns) == 2
+
+    labelled = diarize.label_segments_for_caption(tagged)
+    assert labelled[0]["text"] == "[Speaker 1] hello"
+    assert labelled[1]["text"] == "[Speaker 2] world"
+
+    # No turns → untouched, untagged (preserves single-speaker behaviour).
+    assert diarize.assign_speakers(segs, []) == segs
+    # A single speaker gets no labels (labels would be noise).
+    one = diarize.assign_speakers(segs, [{"start": 0.0, "end": 1.0, "speaker": "SPEAKER_00"}])
+    assert diarize.label_segments_for_caption(one) == one
+
+
+def test_dub_with_diarization(client, auth_headers, monkeypatch):
+    """When diarization is available, captions get speaker labels and the job
+    records the speaker count. The pyannote model is mocked — this verifies the
+    wiring, not the ML."""
+    from engines import diarize as diarize_engine
+
+    async def fake_diarize(audio_path):
+        return [
+            {"start": 0.0, "end": 0.5, "speaker": "SPEAKER_00"},
+            {"start": 0.5, "end": 1.0, "speaker": "SPEAKER_01"},
+        ]
+    monkeypatch.setattr(diarize_engine, "diarize", fake_diarize)
+
+    r = client.post(
+        "/api/dub/generate",
+        data={"target_language": "Hindi", "target_language_code": "hi", "voice": "studio"},
+        files={"source": ("clip.wav", io.BytesIO(FAKE_WAV), "audio/wav")},
+        headers=auth_headers,
+    )
+    assert r.status_code == 200, r.text
+    job = _poll_dub_job(client, r.json()["id"], auth_headers)
+    assert job["status"] == "completed", job
+    assert job["speaker_count"] == 2, job
+
+    srt = client.get("/api" + job["source_srt_url"].removeprefix("/api"), headers=auth_headers)
+    assert srt.status_code == 200
+    assert "[Speaker 1] hello" in srt.text
+    assert "[Speaker 2] world" in srt.text
+
+
 def test_dub_video_job(client, auth_headers, monkeypatch):
     """Video dubbing falls back to a plain audio mux when no lipsync engine is configured.
 

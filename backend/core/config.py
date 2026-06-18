@@ -56,6 +56,8 @@ WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "default")     # default | i
 # piper        = fast CPU fallback, no cloning, English-led
 TTS_ENGINE = os.environ.get("TTS_ENGINE", "auto")                  # auto | chatterbox | indic_parler | multi | piper
 CHATTERBOX_DEVICE = os.environ.get("CHATTERBOX_DEVICE", "cuda")
+# Hugging Face token — used for gated models (Indic Parler-TTS, pyannote diarization).
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 INDIC_PARLER_DEVICE = os.environ.get("INDIC_PARLER_DEVICE", "cuda")
 INDIC_PARLER_MODEL = os.environ.get("INDIC_PARLER_MODEL", "ai4bharat/indic-parler-tts")
 PIPER_VOICES_DIR = Path(os.environ.get("PIPER_VOICES_DIR", DATA_DIR / "piper_voices"))

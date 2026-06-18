@@ -26,7 +26,7 @@ from pathlib import Path
 from core.config import AVATAR_ENGINE, MUSETALK_DIR, AVATAR_PYTHON, OUTPUT_DIR, logger
 from core.db import get_db
 from core.security import now_iso, save_project
-from engines import tts, stt, llm, subtitles
+from engines import tts, stt, llm, subtitles, diarize
 
 VIDEO_EXTS = {"mp4", "mov", "mkv", "webm", "avi"}
 
@@ -48,6 +48,7 @@ def status() -> dict:
         "lipsync_resync_available": (
             AVATAR_ENGINE == "musetalk" and bool(MUSETALK_DIR) and Path(MUSETALK_DIR).exists()
         ),
+        "diarization": diarize.status(),  # multi-speaker labelling (optional, GPU + HF token)
     }
 
 
@@ -117,7 +118,8 @@ async def _translate_aligned(segments: list[dict], source_text: str, target_lang
         lines = subtitles.parse_aligned_translation(raw, len(segments))
         if lines is not None:
             translated_segments = [
-                {"start": s.get("start", 0.0), "end": s.get("end", 0.0), "text": t}
+                {"start": s.get("start", 0.0), "end": s.get("end", 0.0),
+                 "text": t, "speaker": s.get("speaker")}
                 for s, t in zip(segments, lines)
             ]
             return " ".join(lines).strip(), translated_segments
@@ -157,7 +159,19 @@ async def run_job(job_id: str, user_id: str, source_path: str, source_is_video: 
         if not source_text:
             raise RuntimeError("No speech detected in the uploaded file.")
         segments = transcript.get("segments") or []
-        await _set(job_id, transcript=source_text, source_language=transcript.get("language"))
+
+        # 2b. diarization (optional): tag each line with its speaker. No-op — and
+        # single-speaker, exactly as before — unless pyannote is installed and
+        # HF_TOKEN is set. When it runs, captions get "[Speaker N]" labels and the
+        # job records how many speakers were heard.
+        speaker_fields = {}
+        if segments:
+            turns = await diarize.diarize(src_audio)
+            if turns:
+                segments = diarize.assign_speakers(segments, turns)
+                speaker_fields["speaker_count"] = diarize.speaker_count(turns)
+        await _set(job_id, transcript=source_text,
+                   source_language=transcript.get("language"), **speaker_fields)
 
         # 3. translate (line-aligned when we have timed segments)
         translated, translated_segments = await _translate_aligned(
@@ -168,13 +182,15 @@ async def run_job(job_id: str, user_id: str, source_path: str, source_is_video: 
         # 3b. captions — timed, downloadable, editable, in source + target language
         caption_fields = {}
         if segments:
+            labelled_src = diarize.label_segments_for_caption(segments)
             caption_fields["source_srt_url"] = _write_caption(
-                f"dub_{job_id}.src.srt", subtitles.to_srt(segments))
+                f"dub_{job_id}.src.srt", subtitles.to_srt(labelled_src))
         if translated_segments:
+            labelled_tgt = diarize.label_segments_for_caption(translated_segments)
             caption_fields["target_srt_url"] = _write_caption(
-                f"dub_{job_id}.srt", subtitles.to_srt(translated_segments))
+                f"dub_{job_id}.srt", subtitles.to_srt(labelled_tgt))
             caption_fields["target_vtt_url"] = _write_caption(
-                f"dub_{job_id}.vtt", subtitles.to_vtt(translated_segments))
+                f"dub_{job_id}.vtt", subtitles.to_vtt(labelled_tgt))
         if caption_fields:
             await _set(job_id, **caption_fields)
 

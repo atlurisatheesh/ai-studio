@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS dub_jobs (
     source_srt_url TEXT,
     target_srt_url TEXT,
     target_vtt_url TEXT,
+    speaker_count INTEGER,
     error TEXT,
     created_at TEXT NOT NULL,
     started_at TEXT,
@@ -105,6 +106,7 @@ _ADDED_COLUMNS = {
         ("source_srt_url", "TEXT"),
         ("target_srt_url", "TEXT"),
         ("target_vtt_url", "TEXT"),
+        ("speaker_count", "INTEGER"),
     ],
 }
 
